@@ -36,6 +36,14 @@ export const addTrainingParticipant = async (trainingId: string, userId: string)
   return response.data
 }
 
+export const addExternalTrainingParticipant = async (
+  trainingId: string,
+  data: { name: string; affiliation?: string; position?: string }
+): Promise<TrainingParticipant> => {
+  const response = await apiClient.post<TrainingParticipant>(`/participants/training/${trainingId}/add-external`, data)
+  return response.data
+}
+
 export const removeTrainingParticipant = async (trainingId: string, userId: string): Promise<void> => {
   await apiClient.delete(`/participants/training/${trainingId}/user/${userId}`)
 }

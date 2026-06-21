@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { createSignatureAccessToken, verifySignatureAccessToken } from '../utils/signatureAccessToken'
+import { buildExternalParticipantUser, ExternalParticipantInput } from '../utils/externalParticipant'
 
 const prisma = new PrismaClient()
 
@@ -203,6 +204,36 @@ export const addParticipants = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('addParticipants error:', error)
     res.status(500).json({ error: '참가자 추가 중 오류가 발생했습니다.' })
+  }
+}
+
+// 교직원 명단에 없는 외부 대상자 직접 추가
+export const addExternalParticipant = async (req: Request, res: Response) => {
+  try {
+    const { id: meetingId } = req.params
+    const userData = buildExternalParticipantUser(req.body as ExternalParticipantInput)
+
+    const participant = await prisma.$transaction(async (tx) => {
+      const meeting = await tx.meeting.findUnique({ where: { id: meetingId }, select: { id: true } })
+      if (!meeting) throw new Error('MEETING_NOT_FOUND')
+
+      const user = await tx.user.create({ data: userData })
+      return tx.meetingParticipant.create({
+        data: { meetingId, userId: user.id },
+        include: { user: true }
+      })
+    })
+
+    res.status(201).json(participant)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'EXTERNAL_PARTICIPANT_NAME_REQUIRED') {
+      return res.status(400).json({ error: '이름을 입력해주세요.' })
+    }
+    if (error instanceof Error && error.message === 'MEETING_NOT_FOUND') {
+      return res.status(404).json({ error: '회의를 찾을 수 없습니다.' })
+    }
+    console.error('addExternalParticipant error:', error)
+    res.status(500).json({ error: '외부 대상자 추가 중 오류가 발생했습니다.' })
   }
 }
 

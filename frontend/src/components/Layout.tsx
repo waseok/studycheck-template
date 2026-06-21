@@ -60,14 +60,14 @@ const Layout = ({ children }: LayoutProps) => {
                   key={item.to}
                   to={item.to}
                   onClick={closeMenu}
-                  className={`flex items-center justify-between px-4 py-3 rounded-lg text-base font-bold ${active ? 'bg-blue-500 text-white' : 'text-blue-800 hover:bg-blue-50'}`}
+                  className={`flex items-center justify-between px-5 py-3 rounded-lg text-base font-extrabold ${active ? 'bg-blue-500 text-white' : 'text-blue-900 hover:bg-blue-50'}`}
                 >
                   <span>{item.label}</span>
                   {item.subLabel && <span className={`text-sm font-semibold ${active ? 'text-blue-100' : 'text-blue-600'}`}>{item.subLabel}</span>}
                 </Link>
               )
             })}
-            <button onClick={() => { handleLogout(); closeMenu() }} className="w-full text-left px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 border-t border-gray-100">
+            <button onClick={() => { handleLogout(); closeMenu() }} className="w-full text-left px-5 py-3 rounded-lg text-red-700 hover:bg-red-50 border-t border-gray-100 font-extrabold">
               🚪 로그아웃
             </button>
           </div>
@@ -75,7 +75,7 @@ const Layout = ({ children }: LayoutProps) => {
       </div>
 
       <div className="md:flex">
-        <aside className="hidden md:flex md:w-72 min-h-screen bg-white border-r border-blue-100 shadow-sm flex-col">
+        <aside className="hidden md:flex md:w-80 md:flex-shrink-0 min-h-screen bg-white border-r border-blue-100 shadow-sm flex-col">
           <div className="h-24 flex items-center justify-center px-5 border-b border-blue-100">
             <Link to="/dashboard" className="text-blue-800 text-center leading-tight flex flex-col items-center">
               <img src="/school-logo.png" alt="와석초등학교 교표" className="h-11 w-11 object-contain mb-1" />
@@ -89,7 +89,7 @@ const Layout = ({ children }: LayoutProps) => {
                 <Link
                   key={item.to}
                   to={item.to}
-                  className={`flex items-center justify-between px-4 py-3 rounded-xl text-lg font-bold transition ${active ? 'bg-blue-500 text-white shadow' : 'text-blue-800 hover:bg-blue-50'}`}
+                  className={`flex items-center justify-between px-5 py-3 rounded-xl text-lg font-extrabold transition ${active ? 'bg-blue-500 text-white shadow' : 'text-blue-900 hover:bg-blue-50'}`}
                 >
                   <span>{item.label}</span>
                   {item.subLabel && <span className={`text-xs font-semibold ${active ? 'text-blue-100' : 'text-blue-600'}`}>{item.subLabel}</span>}
@@ -100,7 +100,7 @@ const Layout = ({ children }: LayoutProps) => {
           <div className="mt-auto p-3 border-t border-blue-100">
             <button
               onClick={handleLogout}
-              className="w-full px-4 py-3 text-red-600 rounded-xl border border-red-200 hover:bg-red-50 font-medium"
+              className="w-full px-5 py-3 text-red-700 rounded-xl border border-red-200 hover:bg-red-50 font-extrabold"
             >
               🚪 로그아웃
             </button>
