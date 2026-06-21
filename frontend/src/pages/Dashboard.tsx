@@ -3,18 +3,18 @@ import { Link } from 'react-router-dom'
 import Layout from '../components/Layout'
 import CompletionDonut from '../components/CompletionDonut'
 import { isAdmin, getRole } from '../api/auth'
-import { getTrainings } from '../api/trainings'
 import { getMyTrainings } from '../api/participants'
-import { getIncompleteList } from '../api/stats'
-import { Training, TrainingParticipant } from '../types'
+import { getDashboardSummary, DashboardTrainingSummary } from '../api/stats'
+import { TrainingParticipant } from '../types'
 
 const Dashboard = () => {
   const [myTrainings, setMyTrainings] = useState<TrainingParticipant[]>([])
-  const [allTrainings, setAllTrainings] = useState<Training[]>([])
-  const [incompleteList, setIncompleteList] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
+  const [trainingSummaries, setTrainingSummaries] = useState<DashboardTrainingSummary[]>([])
+  const [incompleteSummaries, setIncompleteSummaries] = useState<Array<{ id: string; name: string; count: number }>>([])
+  const [loading, setLoading] = useState(true)
   const adminUser = isAdmin()
   const role = getRole()
+  const managerUser = adminUser || role === 'TRAINING_ADMIN'
   
   useEffect(() => {
     fetchData()
@@ -23,8 +23,11 @@ const Dashboard = () => {
   const fetchData = async () => {
     setLoading(true)
     try {
-      // 모든 사용자: 내 연수 목록
-      const myTrainingsData = await getMyTrainings()
+      const [myTrainingsData, dashboardSummary] = await Promise.all([
+        getMyTrainings(),
+        managerUser ? getDashboardSummary() : Promise.resolve(null)
+      ])
+
       // 미완료 연수를 위로 정렬
       const sorted = [...myTrainingsData].sort((a, b) => {
         if (a.status === 'completed' && b.status !== 'completed') return 1
@@ -33,13 +36,9 @@ const Dashboard = () => {
       })
       setMyTrainings(sorted)
 
-      // 관리자: 전체 연수 목록 및 통계
-      if (adminUser || role === 'TRAINING_ADMIN') {
-        const trainingsData = await getTrainings()
-        setAllTrainings(trainingsData)
-        
-        const incompleteData = await getIncompleteList()
-        setIncompleteList(incompleteData)
+      if (dashboardSummary) {
+        setTrainingSummaries(dashboardSummary.trainings)
+        setIncompleteSummaries(dashboardSummary.incomplete)
       }
     } catch (error) {
       console.error('데이터 조회 오류:', error)
@@ -54,24 +53,9 @@ const Dashboard = () => {
   const myTotalCount = myTrainings.length
   const myCompletionRate = myTotalCount > 0 ? (myCompletedCount / myTotalCount) * 100 : 0
 
-  // 미이수자 알림: 연수별로 그룹화
-  const trainingIncompleteMap = incompleteList.reduce((acc: Record<string, {name: string, count: number, id: string}>, item) => {
-    const trainingId = item.training?.id
-    const trainingName = item.training?.name
-    if (!trainingId || !trainingName) return acc
-    if (!acc[trainingId]) {
-      acc[trainingId] = { name: trainingName, count: 0, id: trainingId }
-    }
-    acc[trainingId].count++
-    return acc
-  }, {})
-  const trainingIncompleteList = Object.values(trainingIncompleteMap)
-
   // 연수별 통계 계산
-  const trainingStats = allTrainings.map(training => {
-    const total = training.participants?.length || 0
-    const completed = training.participants?.filter((p: any) => p.status === 'completed').length || 0
-    const pending = total - completed
+  const trainingStats = trainingSummaries.map(training => {
+    const { total, completed, pending } = training
     const completionRate = total > 0 ? (completed / total) * 100 : 0
     
     return {
@@ -101,7 +85,7 @@ const Dashboard = () => {
       <div className="space-y-6">
         <div>
           <h1 className="text-4xl font-bold text-blue-800 mb-2 flex items-center gap-3">
-            <img src="/school-logo.png" alt="와석초등학교 교표" className="h-14 w-14 object-contain" />
+            <img src="/school-logo.webp" alt="와석초등학교 교표" className="h-14 w-14 object-contain" />
             <span>대시보드</span>
           </h1>
           <p className="text-lg text-gray-700">와석초 연수 관리 통합 플랫폼에 오신 것을 환영합니다.</p>
@@ -189,7 +173,7 @@ const Dashboard = () => {
         </div>
 
         {/* 관리자/연수 관리자용: 연수 목록 및 통계 */}
-        {(adminUser || role === 'TRAINING_ADMIN') && (
+        {managerUser && (
           <>
             {/* 연수 목록 */}
             <div className="bg-white shadow-xl rounded-2xl p-6 border-4 border-blue-200">
@@ -203,15 +187,14 @@ const Dashboard = () => {
                 </Link>
               </div>
               
-              {allTrainings.length === 0 ? (
+              {trainingSummaries.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   등록된 연수가 없습니다.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {allTrainings.slice(0, 5).map((training) => {
-                    const total = training.participants?.length || 0
-                    const completed = training.participants?.filter((p: any) => p.status === 'completed').length || 0
+                  {trainingSummaries.slice(0, 5).map((training) => {
+                    const { total, completed } = training
                     const completionRate = total > 0 ? ((completed / total) * 100).toFixed(1) : 0
 
                     return (
@@ -285,7 +268,7 @@ const Dashboard = () => {
             </div>
 
             {/* 미이수자 알림 - 연수 중심 */}
-            {trainingIncompleteList.length > 0 && (
+            {incompleteSummaries.length > 0 && (
               <div className="bg-white shadow-xl rounded-2xl p-6 border-4 border-red-200">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-2xl font-bold text-red-800">⚠️ 미이수자 알림</h2>
@@ -294,7 +277,7 @@ const Dashboard = () => {
                   </Link>
                 </div>
                 <div className="space-y-2">
-                  {trainingIncompleteList.map((item) => (
+                  {incompleteSummaries.map((item) => (
                     <Link
                       key={item.id}
                       to={`/dashboard/trainings/${item.id}`}

@@ -40,7 +40,7 @@ const Layout = ({ children }: LayoutProps) => {
       <div className="md:hidden bg-white shadow border-b border-blue-100">
         <div className="px-4 h-14 flex items-center justify-between">
           <Link to="/dashboard" className="text-blue-800 font-extrabold text-lg flex items-center gap-2">
-            <img src="/school-logo.png" alt="와석초등학교 교표" className="h-9 w-9 object-contain" />
+            <img src="/school-logo.webp" alt="와석초등학교 교표" className="h-9 w-9 object-contain" />
             <span>와석초 연수관리 플랫폼</span>
           </Link>
           <button
@@ -78,7 +78,7 @@ const Layout = ({ children }: LayoutProps) => {
         <aside className="hidden md:flex md:w-80 md:flex-shrink-0 min-h-screen bg-white border-r border-blue-100 shadow-sm flex-col">
           <div className="h-24 flex items-center justify-center px-5 border-b border-blue-100">
             <Link to="/dashboard" className="text-blue-800 text-center leading-tight flex flex-col items-center">
-              <img src="/school-logo.png" alt="와석초등학교 교표" className="h-11 w-11 object-contain mb-1" />
+              <img src="/school-logo.webp" alt="와석초등학교 교표" className="h-11 w-11 object-contain mb-1" />
               <div className="font-extrabold text-2xl tracking-tight">와석초 연수관리 플랫폼</div>
             </Link>
           </div>
