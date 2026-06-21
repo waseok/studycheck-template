@@ -39,7 +39,10 @@ const Layout = ({ children }: LayoutProps) => {
     <div className="min-h-screen bg-sky-50">
       <div className="md:hidden bg-white shadow border-b border-blue-100">
         <div className="px-4 h-14 flex items-center justify-between">
-          <Link to="/dashboard" className="text-blue-800 font-extrabold text-lg">🏫 와석초 연수관리 플랫폼</Link>
+          <Link to="/dashboard" className="text-blue-800 font-extrabold text-lg flex items-center gap-2">
+            <img src="/school-logo.png" alt="와석초등학교 교표" className="h-9 w-9 object-contain" />
+            <span>와석초 연수관리 플랫폼</span>
+          </Link>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="w-10 h-10 rounded-lg text-blue-700 hover:bg-blue-50"
@@ -57,10 +60,10 @@ const Layout = ({ children }: LayoutProps) => {
                   key={item.to}
                   to={item.to}
                   onClick={closeMenu}
-                  className={`flex items-center justify-between px-4 py-3 rounded-lg text-base ${active ? 'bg-blue-500 text-white' : 'text-blue-700 hover:bg-blue-50'}`}
+                  className={`flex items-center justify-between px-4 py-3 rounded-lg text-base font-bold ${active ? 'bg-blue-500 text-white' : 'text-blue-800 hover:bg-blue-50'}`}
                 >
                   <span>{item.label}</span>
-                  {item.subLabel && <span className={`text-sm ${active ? 'text-blue-100' : 'text-blue-400'}`}>{item.subLabel}</span>}
+                  {item.subLabel && <span className={`text-sm font-semibold ${active ? 'text-blue-100' : 'text-blue-600'}`}>{item.subLabel}</span>}
                 </Link>
               )
             })}
@@ -74,8 +77,8 @@ const Layout = ({ children }: LayoutProps) => {
       <div className="md:flex">
         <aside className="hidden md:flex md:w-72 min-h-screen bg-white border-r border-blue-100 shadow-sm flex-col">
           <div className="h-24 flex items-center justify-center px-5 border-b border-blue-100">
-            <Link to="/dashboard" className="text-blue-800 text-center leading-tight">
-              <div className="text-2xl">🏫</div>
+            <Link to="/dashboard" className="text-blue-800 text-center leading-tight flex flex-col items-center">
+              <img src="/school-logo.png" alt="와석초등학교 교표" className="h-11 w-11 object-contain mb-1" />
               <div className="font-extrabold text-2xl tracking-tight">와석초 연수관리 플랫폼</div>
             </Link>
           </div>
@@ -86,10 +89,10 @@ const Layout = ({ children }: LayoutProps) => {
                 <Link
                   key={item.to}
                   to={item.to}
-                  className={`flex items-center justify-between px-4 py-3 rounded-xl text-lg font-semibold transition ${active ? 'bg-blue-500 text-white shadow' : 'text-blue-700 hover:bg-blue-50'}`}
+                  className={`flex items-center justify-between px-4 py-3 rounded-xl text-lg font-bold transition ${active ? 'bg-blue-500 text-white shadow' : 'text-blue-800 hover:bg-blue-50'}`}
                 >
                   <span>{item.label}</span>
-                  {item.subLabel && <span className={`text-xs ${active ? 'text-blue-100' : 'text-blue-400'}`}>{item.subLabel}</span>}
+                  {item.subLabel && <span className={`text-xs font-semibold ${active ? 'text-blue-100' : 'text-blue-600'}`}>{item.subLabel}</span>}
                 </Link>
               )
             })}

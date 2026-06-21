@@ -137,12 +137,14 @@ const MeetingDetail = () => {
     } catch { alert('처리 중 오류가 발생했습니다.') }
   }
 
-  const handleRemoveParticipant = async (userId: string) => {
-    if (!meetingId || !confirm('이 참가자를 제거하시겠습니까?')) return
+  const handleRemoveParticipant = async (participant: MeetingParticipant) => {
+    if (!meetingId) return
+    const signatureNotice = participant.signature ? '\n기존 서명은 별도로 보존되며, 서명 삭제는 서명 삭제 버튼을 이용하세요.' : ''
+    if (!confirm(`${participant.name}님을 이 회의등록부의 대상자에서 제외하시겠습니까?${signatureNotice}\n사용자 계정과 다른 기록은 삭제되지 않습니다.`)) return
     try {
-      await removeMeetingParticipant(meetingId, userId)
+      await removeMeetingParticipant(meetingId, participant.userId)
       await fetchData()
-    } catch { alert('참가자 제거에 실패했습니다.') }
+    } catch { alert('대상자 제거에 실패했습니다.') }
   }
 
   const getShareLinkStorageKey = () => `meeting-share-link-${meetingId}`
@@ -329,7 +331,7 @@ const MeetingDetail = () => {
                   onClick={openAddParticipant}
                   className="px-3 py-1.5 text-sm border-2 border-blue-300 rounded-lg text-blue-700 hover:bg-blue-50"
                 >
-                  👤 참가자 추가
+                  ➕ 대상자 추가
                 </button>
                 <button
                   onClick={handleComplete}
@@ -453,12 +455,10 @@ const MeetingDetail = () => {
                                 className="text-xs text-red-500 hover:text-red-700"
                               >삭제</button>
                             )}
-                            {!p.signature && (
-                              <button
-                                onClick={() => handleRemoveParticipant(p.userId)}
-                                className="text-xs text-gray-400 hover:text-gray-600"
-                              >제거</button>
-                            )}
+                            <button
+                              onClick={() => handleRemoveParticipant(p)}
+                              className="text-xs text-gray-500 hover:text-red-700"
+                            >대상 제외</button>
                           </div>
                         </td>
                       )}
@@ -598,7 +598,7 @@ const MeetingDetail = () => {
       {showAddParticipant && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">참가자 추가</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">회의등록부 대상자 추가</h2>
             <input
               type="text"
               value={userSearch}
