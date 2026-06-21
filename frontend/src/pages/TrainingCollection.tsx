@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
+import ParticipantAddModal from '../components/ParticipantAddModal'
 import { isAdmin, getRole } from '../api/auth'
 import {
   getParticipants, updateCompletionNumber, cancelCompletion,
-  addTrainingParticipant, removeTrainingParticipant
+  addTrainingParticipant, addExternalTrainingParticipant, removeTrainingParticipant
 } from '../api/participants'
 import { getTrainings } from '../api/trainings'
 import { getUsers } from '../api/users'
@@ -26,8 +27,6 @@ const TrainingCollection = () => {
   const [isManualSort, setIsManualSort] = useState(false)
   const [showAddParticipant, setShowAddParticipant] = useState(false)
   const [allUsers, setAllUsers] = useState<User[]>([])
-  const [userSearch, setUserSearch] = useState('')
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const role = getRole()
   const adminUser = isAdmin() || role === 'TRAINING_ADMIN'
 
@@ -157,34 +156,43 @@ const TrainingCollection = () => {
   }
 
   const handleCancelCompletion = async (participantId: string) => {
-    if (!confirm('이 참여자의 제출을 취소하시겠습니까? 이수번호가 삭제됩니다.')) return
+    if (!confirm('이 참여자의 이수번호를 삭제하시겠습니까? 이수 상태가 미완료로 변경됩니다.')) return
     try {
       await cancelCompletion(participantId)
       fetchData()
     } catch (error: any) {
-      alert(error.response?.data?.error || '제출 취소 중 오류가 발생했습니다.')
+      alert(error.response?.data?.error || '이수번호 삭제 중 오류가 발생했습니다.')
     }
   }
 
   const openAddParticipant = async () => {
     try {
       setAllUsers(await getUsers())
-      setSelectedUserIds([])
-      setUserSearch('')
       setShowAddParticipant(true)
     } catch {
       alert('교직원 목록을 불러오지 못했습니다.')
     }
   }
 
-  const handleAddParticipants = async () => {
-    if (!id || selectedUserIds.length === 0) return
+  const handleAddParticipants = async (userIds: string[]) => {
+    if (!id || userIds.length === 0) return
     try {
-      await Promise.all(selectedUserIds.map(userId => addTrainingParticipant(id, userId)))
+      await Promise.all(userIds.map(userId => addTrainingParticipant(id, userId)))
       setShowAddParticipant(false)
       await fetchData()
     } catch (error: any) {
       alert(error.response?.data?.error || '대상자 추가 중 오류가 발생했습니다.')
+    }
+  }
+
+  const handleAddExternalParticipant = async (external: { name: string; affiliation?: string; position?: string }) => {
+    if (!id) return
+    try {
+      await addExternalTrainingParticipant(id, external)
+      setShowAddParticipant(false)
+      await fetchData()
+    } catch (error: any) {
+      alert(error.response?.data?.error || '외부 대상자 추가 중 오류가 발생했습니다.')
     }
   }
 
@@ -309,14 +317,6 @@ const TrainingCollection = () => {
             {training?.name || '연수 취합'}
           </h1>
           <div className="flex shrink-0 gap-2 flex-wrap justify-end">
-            {adminUser && (
-              <button
-                onClick={openAddParticipant}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-1.5"
-              >
-                ➕ 대상자 추가
-              </button>
-            )}
             {adminUser && incompleteCount > 0 && (
               <button
                 onClick={handleSendIncompleteReminders}
@@ -409,6 +409,12 @@ const TrainingCollection = () => {
           {/* 필터 및 정렬 */}
           {adminUser && (
             <div className="mb-4 flex gap-4 items-center flex-wrap">
+              <button
+                onClick={openAddParticipant}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-extrabold shadow-sm"
+              >
+                ➕ 대상자 추가
+              </button>
               <label className="flex items-center">
                 <input
                   type="checkbox"
@@ -536,40 +542,14 @@ const TrainingCollection = () => {
         </div>
 
         {showAddParticipant && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">연수 대상자 추가</h2>
-              <input
-                type="text"
-                value={userSearch}
-                onChange={e => setUserSearch(e.target.value)}
-                className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:border-blue-500 focus:outline-none"
-                placeholder="이름, 유형, 직위로 검색"
-              />
-              <div className="border-2 border-gray-200 rounded-lg max-h-64 overflow-y-auto mb-4">
-                {allUsers
-                  .filter(user => !participants.some(participant => participant.userId === user.id))
-                  .filter(user => user.name.includes(userSearch) || user.userType.includes(userSearch) || (user.position || '').includes(userSearch))
-                  .map(user => (
-                    <label key={user.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
-                      <input
-                        type="checkbox"
-                        checked={selectedUserIds.includes(user.id)}
-                        onChange={() => setSelectedUserIds(previous => previous.includes(user.id) ? previous.filter(id => id !== user.id) : [...previous, user.id])}
-                        className="h-4 w-4 text-blue-600"
-                      />
-                      <span className="text-sm text-gray-900">{user.name}</span>
-                      <span className="text-xs text-gray-500">{user.userType} {user.position ? `· ${user.position}` : ''}</span>
-                    </label>
-                  ))}
-              </div>
-              <p className="text-xs text-gray-500 mb-4">{selectedUserIds.length}명 선택됨</p>
-              <div className="flex gap-3">
-                <button onClick={() => setShowAddParticipant(false)} className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">취소</button>
-                <button onClick={handleAddParticipants} disabled={selectedUserIds.length === 0} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50">추가</button>
-              </div>
-            </div>
-          </div>
+          <ParticipantAddModal
+            title="연수 대상자 추가"
+            users={allUsers}
+            existingUserIds={participants.map(participant => participant.userId)}
+            onClose={() => setShowAddParticipant(false)}
+            onAddUsers={handleAddParticipants}
+            onAddExternal={handleAddExternalParticipant}
+          />
         )}
       </div>
     </Layout>
@@ -655,14 +635,14 @@ const ParticipantRow = ({ index, totalCount, participant, onUpdate, onCancel, on
             onClick={() => setEditing(!editing)}
             className="text-indigo-600 hover:text-indigo-900"
           >
-            {editing ? '저장' : '수정'}
+            {editing ? '저장' : '이수번호 수정'}
           </button>
           {participant.status === 'completed' && (
             <button
               onClick={() => onCancel(participant.id)}
               className="text-red-600 hover:text-red-900"
             >
-              취소
+              이수번호 삭제
             </button>
           )}
           <button

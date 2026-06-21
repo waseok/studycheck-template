@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import prisma from '../utils/prisma'
+import { buildExternalParticipantUser, ExternalParticipantInput } from '../utils/externalParticipant'
 
 export const getParticipants = async (req: Request, res: Response) => {
   try {
@@ -343,6 +344,36 @@ export const addParticipant = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Add participant error:', error)
     res.status(500).json({ error: '참여자 추가 중 오류가 발생했습니다.' })
+  }
+}
+
+// 교직원 명단에 없는 외부 대상자 직접 추가
+export const addExternalParticipant = async (req: Request, res: Response) => {
+  try {
+    const { trainingId } = req.params
+    const userData = buildExternalParticipantUser(req.body as ExternalParticipantInput)
+
+    const participant = await prisma.$transaction(async (tx) => {
+      const training = await tx.training.findUnique({ where: { id: trainingId }, select: { id: true } })
+      if (!training) throw new Error('TRAINING_NOT_FOUND')
+
+      const user = await tx.user.create({ data: userData })
+      return tx.trainingParticipant.create({
+        data: { trainingId, userId: user.id, status: 'pending' },
+        include: { user: true }
+      })
+    })
+
+    res.status(201).json(participant)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'EXTERNAL_PARTICIPANT_NAME_REQUIRED') {
+      return res.status(400).json({ error: '이름을 입력해주세요.' })
+    }
+    if (error instanceof Error && error.message === 'TRAINING_NOT_FOUND') {
+      return res.status(404).json({ error: '연수를 찾을 수 없습니다.' })
+    }
+    console.error('Add external participant error:', error)
+    res.status(500).json({ error: '외부 대상자 추가 중 오류가 발생했습니다.' })
   }
 }
 

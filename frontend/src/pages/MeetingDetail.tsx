@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
+import ParticipantAddModal from '../components/ParticipantAddModal'
 import SignaturePad, { SignaturePadRef } from '../components/SignaturePad'
 import {
   getMeeting, saveMeetingSignature, deleteMeetingSignature,
-  completeMeeting, updateMeeting, addMeetingParticipants, removeMeetingParticipant,
+  completeMeeting, updateMeeting, addMeetingParticipants, addExternalMeetingParticipant, removeMeetingParticipant,
   MeetingDetail as MeetingDetailType, MeetingParticipant, createMeetingSignatureShareLink
 } from '../api/meetings'
 import { getUsers } from '../api/users'
@@ -28,8 +29,6 @@ const MeetingDetail = () => {
   const [savingSignature, setSavingSignature] = useState(false)
   const [showAddParticipant, setShowAddParticipant] = useState(false)
   const [allUsers, setAllUsers] = useState<User[]>([])
-  const [userSearch, setUserSearch] = useState('')
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({ name: '', agenda: '', date: '', location: '' })
   const [showShareLinkModal, setShowShareLinkModal] = useState(false)
@@ -220,19 +219,28 @@ const MeetingDetail = () => {
     try {
       const users = await getUsers()
       setAllUsers(users)
-      setSelectedUserIds([])
-      setUserSearch('')
       setShowAddParticipant(true)
     } catch { alert('교직원 목록을 불러오지 못했습니다.') }
   }
 
-  const handleAddParticipants = async () => {
-    if (!meetingId || !selectedUserIds.length) return
+  const handleAddParticipants = async (userIds: string[]) => {
+    if (!meetingId || !userIds.length) return
     try {
-      await addMeetingParticipants(meetingId, selectedUserIds)
+      await addMeetingParticipants(meetingId, userIds)
       setShowAddParticipant(false)
       await fetchData()
     } catch { alert('참가자 추가에 실패했습니다.') }
+  }
+
+  const handleAddExternalParticipant = async (external: { name: string; affiliation?: string; position?: string }) => {
+    if (!meetingId) return
+    try {
+      await addExternalMeetingParticipant(meetingId, external)
+      setShowAddParticipant(false)
+      await fetchData()
+    } catch (err: any) {
+      alert(err.response?.data?.error || '외부 대상자 추가에 실패했습니다.')
+    }
   }
 
   const handleSaveEdit = async () => {
@@ -596,46 +604,14 @@ const MeetingDetail = () => {
 
       {/* 참가자 추가 모달 */}
       {showAddParticipant && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">회의등록부 대상자 추가</h2>
-            <input
-              type="text"
-              value={userSearch}
-              onChange={e => setUserSearch(e.target.value)}
-              className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:border-green-500 focus:outline-none"
-              placeholder="이름, 유형으로 검색"
-            />
-            <div className="border-2 border-gray-200 rounded-lg max-h-64 overflow-y-auto mb-4">
-              {allUsers
-                .filter(u => !data?.participants.some(p => p.userId === u.id))
-                .filter(u => u.name.includes(userSearch) || u.userType.includes(userSearch) || (u.position || '').includes(userSearch))
-                .map(u => (
-                  <label key={u.id}
-                    className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0"
-                  >
-                    <input type="checkbox" checked={selectedUserIds.includes(u.id)}
-                      onChange={() => setSelectedUserIds(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])}
-                      className="h-4 w-4 text-green-600"
-                    />
-                    <span className="text-sm text-gray-900">{u.name}</span>
-                    <span className="text-xs text-gray-500">{u.userType} {u.position ? `· ${u.position}` : ''}</span>
-                  </label>
-                ))}
-            </div>
-            <p className="text-xs text-gray-500 mb-4">{selectedUserIds.length}명 선택됨</p>
-            <div className="flex gap-3">
-              <button onClick={() => { setShowAddParticipant(false); setSelectedUserIds([]) }}
-                className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-                취소
-              </button>
-              <button onClick={handleAddParticipants} disabled={!selectedUserIds.length}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50">
-                추가
-              </button>
-            </div>
-          </div>
-        </div>
+        <ParticipantAddModal
+          title="회의등록부 대상자 추가"
+          users={allUsers}
+          existingUserIds={participants.map(participant => participant.userId)}
+          onClose={() => setShowAddParticipant(false)}
+          onAddUsers={handleAddParticipants}
+          onAddExternal={handleAddExternalParticipant}
+        />
       )}
 
       {/* 회의 정보 수정 모달 */}

@@ -93,6 +93,13 @@ export const addMeetingParticipants = async (meetingId: string, userIds: string[
   await apiClient.post(`/meetings/${meetingId}/participants`, { userIds })
 }
 
+export const addExternalMeetingParticipant = async (
+  meetingId: string,
+  data: { name: string; affiliation?: string; position?: string }
+): Promise<void> => {
+  await apiClient.post(`/meetings/${meetingId}/participants/external`, data)
+}
+
 export const removeMeetingParticipant = async (meetingId: string, userId: string): Promise<void> => {
   await apiClient.delete(`/meetings/${meetingId}/participants/${userId}`)
 }

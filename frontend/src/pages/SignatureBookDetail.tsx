@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
+import ParticipantAddModal from '../components/ParticipantAddModal'
 import SignaturePad, { SignaturePadRef } from '../components/SignaturePad'
 import {
   getSignatureBook, saveSignature, deleteSignature, syncSignatureStatus, getSavedSignature,
   saveSavedSignature, SignatureBookData, SignatureParticipant, createTrainingSignatureShareLink
 } from '../api/signatures'
-import { addTrainingParticipant, removeTrainingParticipant } from '../api/participants'
+import { addTrainingParticipant, addExternalTrainingParticipant, removeTrainingParticipant } from '../api/participants'
 import { getUsers } from '../api/users'
 import { User } from '../types'
 
@@ -30,8 +31,6 @@ const SignatureBookDetail = () => {
   const [creatingShareLink, setCreatingShareLink] = useState(false)
   const [showAddParticipant, setShowAddParticipant] = useState(false)
   const [allUsers, setAllUsers] = useState<User[]>([])
-  const [userSearch, setUserSearch] = useState('')
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
 
   const printRef = useRef<HTMLDivElement>(null)
   const signaturePadRef = useRef<SignaturePadRef>(null)
@@ -152,23 +151,33 @@ const SignatureBookDetail = () => {
   const openAddParticipant = async () => {
     try {
       setAllUsers(await getUsers())
-      setSelectedUserIds([])
-      setUserSearch('')
       setShowAddParticipant(true)
     } catch {
       alert('교직원 목록을 불러오지 못했습니다.')
     }
   }
 
-  const handleAddParticipants = async () => {
-    if (!trainingId || selectedUserIds.length === 0) return
+  const handleAddParticipants = async (userIds: string[]) => {
+    if (!trainingId || userIds.length === 0) return
     try {
-      await Promise.all(selectedUserIds.map(userId => addTrainingParticipant(trainingId, userId)))
+      await Promise.all(userIds.map(userId => addTrainingParticipant(trainingId, userId)))
       setShowAddParticipant(false)
       setCustomOrder(null)
       await fetchData()
     } catch (err: any) {
       alert(err.response?.data?.error || '대상자 추가에 실패했습니다.')
+    }
+  }
+
+  const handleAddExternalParticipant = async (external: { name: string; affiliation?: string; position?: string }) => {
+    if (!trainingId) return
+    try {
+      await addExternalTrainingParticipant(trainingId, external)
+      setShowAddParticipant(false)
+      setCustomOrder(null)
+      await fetchData()
+    } catch (err: any) {
+      alert(err.response?.data?.error || '외부 대상자 추가에 실패했습니다.')
     }
   }
 
@@ -642,40 +651,14 @@ const SignatureBookDetail = () => {
       </div>
 
       {showAddParticipant && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">연수등록부 대상자 추가</h2>
-            <input
-              type="text"
-              value={userSearch}
-              onChange={event => setUserSearch(event.target.value)}
-              className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:border-green-500 focus:outline-none"
-              placeholder="이름, 유형, 직위로 검색"
-            />
-            <div className="border-2 border-gray-200 rounded-lg max-h-64 overflow-y-auto mb-4">
-              {allUsers
-                .filter(user => !data?.participants.some(participant => participant.userId === user.id))
-                .filter(user => user.name.includes(userSearch) || user.userType.includes(userSearch) || (user.position || '').includes(userSearch))
-                .map(user => (
-                  <label key={user.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
-                    <input
-                      type="checkbox"
-                      checked={selectedUserIds.includes(user.id)}
-                      onChange={() => setSelectedUserIds(previous => previous.includes(user.id) ? previous.filter(id => id !== user.id) : [...previous, user.id])}
-                      className="h-4 w-4 text-green-600"
-                    />
-                    <span className="text-sm text-gray-900">{user.name}</span>
-                    <span className="text-xs text-gray-500">{user.userType} {user.position ? `· ${user.position}` : ''}</span>
-                  </label>
-                ))}
-            </div>
-            <p className="text-xs text-gray-500 mb-4">{selectedUserIds.length}명 선택됨</p>
-            <div className="flex gap-3">
-              <button onClick={() => setShowAddParticipant(false)} className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">취소</button>
-              <button onClick={handleAddParticipants} disabled={selectedUserIds.length === 0} className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50">추가</button>
-            </div>
-          </div>
-        </div>
+        <ParticipantAddModal
+          title="연수등록부 대상자 추가"
+          users={allUsers}
+          existingUserIds={(data?.participants ?? []).map(participant => participant.userId)}
+          onClose={() => setShowAddParticipant(false)}
+          onAddUsers={handleAddParticipants}
+          onAddExternal={handleAddExternalParticipant}
+        />
       )}
 
       {/* 서명 링크 생성 모달 */}
