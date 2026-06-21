@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "description": "의무연수 안내 취합 통합 플랫폼 백엔드",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=20.0.0 <23.0.0"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "prisma generate && tsc",
-    "start": "npx prisma db push --accept-data-loss && node dist/index.js",
+    "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
