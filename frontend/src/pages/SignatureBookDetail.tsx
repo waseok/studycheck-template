@@ -6,6 +6,9 @@ import {
   getSignatureBook, saveSignature, deleteSignature, syncSignatureStatus, getSavedSignature,
   saveSavedSignature, SignatureBookData, SignatureParticipant, createTrainingSignatureShareLink
 } from '../api/signatures'
+import { addTrainingParticipant, removeTrainingParticipant } from '../api/participants'
+import { getUsers } from '../api/users'
+import { User } from '../types'
 
 const SignatureBookDetail = () => {
   const { trainingId } = useParams<{ trainingId: string }>()
@@ -25,6 +28,10 @@ const SignatureBookDetail = () => {
   const [shareLinkUrl, setShareLinkUrl] = useState('')
   const [shareLinkExpiresAt, setShareLinkExpiresAt] = useState<number | null>(null)
   const [creatingShareLink, setCreatingShareLink] = useState(false)
+  const [showAddParticipant, setShowAddParticipant] = useState(false)
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [userSearch, setUserSearch] = useState('')
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
 
   const printRef = useRef<HTMLDivElement>(null)
   const signaturePadRef = useRef<SignaturePadRef>(null)
@@ -139,6 +146,42 @@ const SignatureBookDetail = () => {
       await fetchData()
     } catch {
       alert('서명 삭제에 실패했습니다.')
+    }
+  }
+
+  const openAddParticipant = async () => {
+    try {
+      setAllUsers(await getUsers())
+      setSelectedUserIds([])
+      setUserSearch('')
+      setShowAddParticipant(true)
+    } catch {
+      alert('교직원 목록을 불러오지 못했습니다.')
+    }
+  }
+
+  const handleAddParticipants = async () => {
+    if (!trainingId || selectedUserIds.length === 0) return
+    try {
+      await Promise.all(selectedUserIds.map(userId => addTrainingParticipant(trainingId, userId)))
+      setShowAddParticipant(false)
+      setCustomOrder(null)
+      await fetchData()
+    } catch (err: any) {
+      alert(err.response?.data?.error || '대상자 추가에 실패했습니다.')
+    }
+  }
+
+  const handleRemoveParticipant = async (participant: SignatureParticipant) => {
+    if (!trainingId) return
+    const signatureNotice = participant.signature ? '\n기존 서명은 별도로 보존되며, 서명 삭제는 서명 삭제 버튼을 이용하세요.' : ''
+    if (!confirm(`${participant.name}님을 이 연수등록부의 대상자에서 제외하시겠습니까?${signatureNotice}\n사용자 계정과 다른 기록은 삭제되지 않습니다.`)) return
+    try {
+      await removeTrainingParticipant(trainingId, participant.userId)
+      setCustomOrder(null)
+      await fetchData()
+    } catch (err: any) {
+      alert(err.response?.data?.error || '대상자 제거에 실패했습니다.')
     }
   }
 
@@ -372,6 +415,12 @@ const SignatureBookDetail = () => {
                     </button>
                   )}
                   <button
+                    onClick={openAddParticipant}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-1"
+                  >
+                    ➕ 대상자 추가
+                  </button>
+                  <button
                     onClick={handleSyncStatus}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-1"
                     title="서명했지만 미완료 상태인 참여자를 완료로 일괄 처리"
@@ -533,14 +582,22 @@ const SignatureBookDetail = () => {
                       </td>
                       {isAdmin && (
                         <td className="border border-gray-400 px-1 py-1 text-center no-print">
-                          {p.signature && (
+                          <div className="flex flex-col gap-1 items-center">
+                            {p.signature && (
                             <button
                               onClick={() => setDeleteConfirm(p.userId)}
                               className="text-xs text-red-500 hover:text-red-700"
                             >
-                              삭제
+                              서명 삭제
                             </button>
-                          )}
+                            )}
+                            <button
+                              onClick={() => handleRemoveParticipant(p)}
+                              className="text-xs text-gray-500 hover:text-red-700"
+                            >
+                              대상 제외
+                            </button>
+                          </div>
                         </td>
                       )}
                       {isAdmin && (
@@ -583,6 +640,43 @@ const SignatureBookDetail = () => {
           </>
         ) : null}
       </div>
+
+      {showAddParticipant && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">연수등록부 대상자 추가</h2>
+            <input
+              type="text"
+              value={userSearch}
+              onChange={event => setUserSearch(event.target.value)}
+              className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:border-green-500 focus:outline-none"
+              placeholder="이름, 유형, 직위로 검색"
+            />
+            <div className="border-2 border-gray-200 rounded-lg max-h-64 overflow-y-auto mb-4">
+              {allUsers
+                .filter(user => !data?.participants.some(participant => participant.userId === user.id))
+                .filter(user => user.name.includes(userSearch) || user.userType.includes(userSearch) || (user.position || '').includes(userSearch))
+                .map(user => (
+                  <label key={user.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.includes(user.id)}
+                      onChange={() => setSelectedUserIds(previous => previous.includes(user.id) ? previous.filter(id => id !== user.id) : [...previous, user.id])}
+                      className="h-4 w-4 text-green-600"
+                    />
+                    <span className="text-sm text-gray-900">{user.name}</span>
+                    <span className="text-xs text-gray-500">{user.userType} {user.position ? `· ${user.position}` : ''}</span>
+                  </label>
+                ))}
+            </div>
+            <p className="text-xs text-gray-500 mb-4">{selectedUserIds.length}명 선택됨</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowAddParticipant(false)} className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">취소</button>
+              <button onClick={handleAddParticipants} disabled={selectedUserIds.length === 0} className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50">추가</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 서명 링크 생성 모달 */}
       {showShareLinkModal && (

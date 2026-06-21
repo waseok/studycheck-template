@@ -30,3 +30,12 @@ export const cleanupDuplicates = async (): Promise<{ success: boolean; message: 
   const response = await apiClient.post<{ success: boolean; message: string; deletedCount?: number; duplicateGroups?: number }>('/participants/cleanup-duplicates')
   return response.data
 }
+
+export const addTrainingParticipant = async (trainingId: string, userId: string): Promise<TrainingParticipant> => {
+  const response = await apiClient.post<TrainingParticipant>(`/participants/training/${trainingId}/add`, { userId })
+  return response.data
+}
+
+export const removeTrainingParticipant = async (trainingId: string, userId: string): Promise<void> => {
+  await apiClient.delete(`/participants/training/${trainingId}/user/${userId}`)
+}

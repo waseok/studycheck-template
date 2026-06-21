@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { isAdmin, getRole } from '../api/auth'
-import { getParticipants, updateCompletionNumber, cancelCompletion } from '../api/participants'
+import {
+  getParticipants, updateCompletionNumber, cancelCompletion,
+  addTrainingParticipant, removeTrainingParticipant
+} from '../api/participants'
 import { getTrainings } from '../api/trainings'
+import { getUsers } from '../api/users'
 import { sendIncompleteReminders } from '../api/reminders'
-import { TrainingParticipant, Training } from '../types'
+import { TrainingParticipant, Training, User } from '../types'
 
 const TrainingCollection = () => {
   const { id } = useParams<{ id: string }>()
@@ -20,6 +24,10 @@ const TrainingCollection = () => {
   const [showCompletionHelp, setShowCompletionHelp] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
   const [isManualSort, setIsManualSort] = useState(false)
+  const [showAddParticipant, setShowAddParticipant] = useState(false)
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [userSearch, setUserSearch] = useState('')
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const role = getRole()
   const adminUser = isAdmin() || role === 'TRAINING_ADMIN'
 
@@ -158,6 +166,40 @@ const TrainingCollection = () => {
     }
   }
 
+  const openAddParticipant = async () => {
+    try {
+      setAllUsers(await getUsers())
+      setSelectedUserIds([])
+      setUserSearch('')
+      setShowAddParticipant(true)
+    } catch {
+      alert('교직원 목록을 불러오지 못했습니다.')
+    }
+  }
+
+  const handleAddParticipants = async () => {
+    if (!id || selectedUserIds.length === 0) return
+    try {
+      await Promise.all(selectedUserIds.map(userId => addTrainingParticipant(id, userId)))
+      setShowAddParticipant(false)
+      await fetchData()
+    } catch (error: any) {
+      alert(error.response?.data?.error || '대상자 추가 중 오류가 발생했습니다.')
+    }
+  }
+
+  const handleRemoveParticipant = async (participant: TrainingParticipant) => {
+    if (!id || !participant.user) return
+    const completionNotice = participant.completionNumber ? '\n이 대상자의 이수번호도 해당 연수 목록에서 제외됩니다.' : ''
+    if (!confirm(`${participant.user.name}님을 이 연수의 대상자에서 제외하시겠습니까?${completionNotice}\n사용자 계정과 다른 연수 기록은 삭제되지 않습니다.`)) return
+    try {
+      await removeTrainingParticipant(id, participant.user.id)
+      await fetchData()
+    } catch (error: any) {
+      alert(error.response?.data?.error || '대상자 제거 중 오류가 발생했습니다.')
+    }
+  }
+
   const handleSendIncompleteReminders = async () => {
     if (!id) return
     
@@ -267,6 +309,14 @@ const TrainingCollection = () => {
             {training?.name || '연수 취합'}
           </h1>
           <div className="flex shrink-0 gap-2 flex-wrap justify-end">
+            {adminUser && (
+              <button
+                onClick={openAddParticipant}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-1.5"
+              >
+                ➕ 대상자 추가
+              </button>
+            )}
             {adminUser && incompleteCount > 0 && (
               <button
                 onClick={handleSendIncompleteReminders}
@@ -474,6 +524,7 @@ const TrainingCollection = () => {
                     participant={participant}
                     onUpdate={handleUpdateCompletionNumber}
                     onCancel={handleCancelCompletion}
+                    onRemove={() => handleRemoveParticipant(participant)}
                     isAdmin={adminUser}
                     onMoveUp={() => moveRow(index, 'up')}
                     onMoveDown={() => moveRow(index, 'down')}
@@ -483,6 +534,43 @@ const TrainingCollection = () => {
             </table>
           </div>
         </div>
+
+        {showAddParticipant && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">연수 대상자 추가</h2>
+              <input
+                type="text"
+                value={userSearch}
+                onChange={e => setUserSearch(e.target.value)}
+                className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:border-blue-500 focus:outline-none"
+                placeholder="이름, 유형, 직위로 검색"
+              />
+              <div className="border-2 border-gray-200 rounded-lg max-h-64 overflow-y-auto mb-4">
+                {allUsers
+                  .filter(user => !participants.some(participant => participant.userId === user.id))
+                  .filter(user => user.name.includes(userSearch) || user.userType.includes(userSearch) || (user.position || '').includes(userSearch))
+                  .map(user => (
+                    <label key={user.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIds.includes(user.id)}
+                        onChange={() => setSelectedUserIds(previous => previous.includes(user.id) ? previous.filter(id => id !== user.id) : [...previous, user.id])}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <span className="text-sm text-gray-900">{user.name}</span>
+                      <span className="text-xs text-gray-500">{user.userType} {user.position ? `· ${user.position}` : ''}</span>
+                    </label>
+                  ))}
+              </div>
+              <p className="text-xs text-gray-500 mb-4">{selectedUserIds.length}명 선택됨</p>
+              <div className="flex gap-3">
+                <button onClick={() => setShowAddParticipant(false)} className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">취소</button>
+                <button onClick={handleAddParticipants} disabled={selectedUserIds.length === 0} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50">추가</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   )
@@ -494,12 +582,13 @@ interface ParticipantRowProps {
   participant: TrainingParticipant
   onUpdate: (id: string, completionNumber: string) => void
   onCancel: (id: string) => void
+  onRemove: () => void
   isAdmin: boolean
   onMoveUp: () => void
   onMoveDown: () => void
 }
 
-const ParticipantRow = ({ index, totalCount, participant, onUpdate, onCancel, isAdmin, onMoveUp, onMoveDown }: ParticipantRowProps) => {
+const ParticipantRow = ({ index, totalCount, participant, onUpdate, onCancel, onRemove, isAdmin, onMoveUp, onMoveDown }: ParticipantRowProps) => {
   const [editing, setEditing] = useState(false)
   const [completionNumber, setCompletionNumber] = useState(participant.completionNumber || '')
 
@@ -576,6 +665,12 @@ const ParticipantRow = ({ index, totalCount, participant, onUpdate, onCancel, is
               취소
             </button>
           )}
+          <button
+            onClick={onRemove}
+            className="text-red-700 hover:text-red-950"
+          >
+            대상 제외
+          </button>
         </td>
       )}
       {isAdmin && (

@@ -100,7 +100,10 @@ const Dashboard = () => {
     <Layout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-4xl font-bold text-blue-800 mb-2">🏠 대시보드</h1>
+          <h1 className="text-4xl font-bold text-blue-800 mb-2 flex items-center gap-3">
+            <img src="/school-logo.png" alt="와석초등학교 교표" className="h-14 w-14 object-contain" />
+            <span>대시보드</span>
+          </h1>
           <p className="text-lg text-gray-700">와석초 연수 관리 통합 플랫폼에 오신 것을 환영합니다.</p>
         </div>
 
