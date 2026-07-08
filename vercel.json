@@ -7,16 +7,12 @@
   "framework": null,
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api"
-    },
-    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
   ],
   "functions": {
-    "api/index.ts": {
+    "api/[...path].ts": {
       "maxDuration": 60,
       "memory": 1024,
       "includeFiles": "backend/node_modules/.prisma/**,backend/prisma/**"
