@@ -2,7 +2,8 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -28,7 +29,6 @@ model User {
 
   // Relations
   trainingParticipants TrainingParticipant[]
-  reminders           TrainingReminder[]
   signatures          TrainingSignature[]
   trainingNotices     TrainingNotice[]
   meetingParticipants MeetingParticipant[]
@@ -60,7 +60,6 @@ model Training {
 
   // Relations
   participants TrainingParticipant[]
-  reminders    TrainingReminder[]
   signatures   TrainingSignature[]
 
   @@map("trainings")
@@ -170,20 +169,19 @@ model StaffGroupMember {
   @@map("staff_group_members")
 }
 
-model TrainingReminder {
-  id           String   @id @default(uuid())
-  trainingId   String   @map("training_id")
-  userId       String   @map("user_id")
-  reminderType String   @map("reminder_type") // 3months, 1month, missing
-  sentAt       DateTime @default(now()) @map("sent_at")
-  status       String   @default("sent") // sent, failed
-  createdAt    DateTime @default(now()) @map("created_at")
+model AppSettings {
+  id                 String   @id @default("default")
+  schoolName         String   @default("연수 관리 통합 플랫폼") @map("school_name")
+  schoolLogoUrl      String?  @map("school_logo_url")
+  schoolPasswordHash String?  @map("school_password_hash")
+  adminPasswordHash  String?  @map("admin_password_hash")
+  supabaseProjectUrl String?  @map("supabase_project_url")
+  vercelAppUrl       String?  @map("vercel_app_url")
+  setupCompleted     Boolean  @default(false) @map("setup_completed")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
-  // Relations
-  training Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("training_reminders")
+  @@map("app_settings")
 }
 
 model TrainingNotice {

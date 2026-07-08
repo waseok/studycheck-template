@@ -3,7 +3,6 @@ import Layout from '../components/Layout'
 import CompletionDonut from '../components/CompletionDonut'
 import { getTrainingStats, getIncompleteList } from '../api/stats'
 import { getTrainings } from '../api/trainings'
-import { sendIncompleteReminders, sendReminders } from '../api/reminders'
 import { Training } from '../types'
 
 const Stats = () => {
@@ -13,8 +12,6 @@ const Stats = () => {
   const [incompleteList, setIncompleteList] = useState<any[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(false)
-  const [sendingReminder, setSendingReminder] = useState<string | null>(null)
-  const [reminderResult, setReminderResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   useEffect(() => {
     fetchTrainings()
@@ -57,27 +54,6 @@ const Stats = () => {
     }
   }, [selectedTraining])
 
-  const handleSendReminder = async (trainingId: string, trainingName: string) => {
-    if (!confirm(`"${trainingName}" 미이수자에게 알림 메일을 발송하시겠습니까?`)) return
-
-    setSendingReminder(trainingId)
-    setReminderResult(null)
-    try {
-      const result = await sendIncompleteReminders(trainingId)
-      setReminderResult({
-        type: 'success',
-        message: result.message || `${result.sentCount}명에게 발송 완료 (실패: ${result.failedCount}명)`
-      })
-    } catch (error: any) {
-      const msg = error.code === 'ECONNABORTED'
-        ? '요청 시간이 초과되었습니다. 서버가 응답하지 않습니다.'
-        : error.response?.data?.error || '알림 발송에 실패했습니다. SMTP 설정을 확인해주세요.'
-      setReminderResult({ type: 'error', message: msg })
-    } finally {
-      setSendingReminder(null)
-    }
-  }
-
   const handleExportIncompleteToExcel = async () => {
     if (incompleteList.length === 0) {
       alert('미이수자가 없습니다.')
@@ -96,24 +72,6 @@ const Stats = () => {
     const ws = XLSX.utils.json_to_sheet(excelData)
     XLSX.utils.book_append_sheet(wb, ws, '미이수자 목록')
     XLSX.writeFile(wb, `미이수자_목록_${new Date().toISOString().split('T')[0]}.xlsx`)
-  }
-
-  const handleSendAllReminders = async () => {
-    if (!confirm('모든 연수의 미이수자에게 알림 메일을 발송하시겠습니까?')) return
-
-    setSendingReminder('all')
-    setReminderResult(null)
-    try {
-      const result = await sendReminders()
-      setReminderResult({ type: 'success', message: result.message })
-    } catch (error: any) {
-      const msg = error.code === 'ECONNABORTED'
-        ? '요청 시간이 초과되었습니다. 서버가 응답하지 않습니다.'
-        : error.response?.data?.error || '알림 발송에 실패했습니다. SMTP 설정을 확인해주세요.'
-      setReminderResult({ type: 'error', message: msg })
-    } finally {
-      setSendingReminder(null)
-    }
   }
 
   // 각 연수별 완료율 데이터 (원그래프용)
@@ -227,22 +185,6 @@ const Stats = () => {
                     </div>
                   </div>
 
-                  {trainingStats.pending > 0 && selectedTraining && (
-                    <button
-                      onClick={() => handleSendReminder(selectedTraining, trainingStats.training?.name || '')}
-                      disabled={sendingReminder === selectedTraining}
-                      className="w-full py-2.5 px-4 bg-red-500 hover:bg-red-600 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
-                    >
-                      {sendingReminder === selectedTraining ? (
-                        <>
-                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                          발송 중...
-                        </>
-                      ) : (
-                        <>📧 미이수자 {trainingStats.pending}명에게 알림 메일 발송</>
-                      )}
-                    </button>
-                  )}
                 </div>
 
                 <div className="flex justify-center">
@@ -252,17 +194,6 @@ const Stats = () => {
             )}
           </div>
         </div>
-
-        {reminderResult && (
-          <div className={`p-4 rounded-xl text-sm font-medium ${
-            reminderResult.type === 'success'
-              ? 'bg-green-100 text-green-800 border border-green-300'
-              : 'bg-red-100 text-red-800 border border-red-300'
-          }`}>
-            {reminderResult.type === 'success' ? '✅' : '❌'} {reminderResult.message}
-            <button onClick={() => setReminderResult(null)} className="ml-3 text-xs underline opacity-70 hover:opacity-100">닫기</button>
-          </div>
-        )}
 
         <div className="bg-white shadow-xl rounded-2xl p-6 border-4 border-blue-300">
           <div className="flex items-center justify-between mb-4">
@@ -277,22 +208,6 @@ const Stats = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   엑셀 다운로드
-                </button>
-              )}
-              {incompleteList.length > 0 && (
-                <button
-                  onClick={handleSendAllReminders}
-                  disabled={sendingReminder === 'all'}
-                  className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-                >
-                  {sendingReminder === 'all' ? (
-                    <>
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                      발송 중...
-                    </>
-                  ) : (
-                    <>📧 전체 미이수자에게 알림 발송</>
-                  )}
                 </button>
               )}
             </div>

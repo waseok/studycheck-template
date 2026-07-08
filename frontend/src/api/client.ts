@@ -1,9 +1,7 @@
 import axios from 'axios'
 
-// Vite 프록시를 사용하거나 직접 백엔드 URL 사용
-// 개발 환경에서는 프록시 대신 백엔드로 직접 요청하여 헤더 전달 문제를 회피
-// 프로덕션에서는 환경 변수가 없으면 기본 백엔드 URL 사용
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : 'https://studycheck.onrender.com/api')
+// 개발: Vite 프록시(/api), 프로덕션: 환경변수 또는 상대경로
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 const apiClient = axios.create({
   baseURL: API_URL,

@@ -44,7 +44,7 @@ export interface PublicSignatureBookData extends SignatureBookData {
   accessUserId: string | null
 }
 
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : 'https://studycheck.onrender.com/api')
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 export const getSignatureBook = async (trainingId: string): Promise<SignatureBookData> => {
   const response = await apiClient.get<SignatureBookData>(`/signatures/training/${trainingId}`)

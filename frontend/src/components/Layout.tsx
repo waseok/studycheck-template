@@ -1,6 +1,7 @@
 import { useMemo, useState, ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { logout } from '../api/auth'
+import SchoolBranding from './SchoolBranding'
 
 interface LayoutProps {
   children: ReactNode
@@ -39,9 +40,8 @@ const Layout = ({ children }: LayoutProps) => {
     <div className="min-h-screen bg-sky-50">
       <div className="md:hidden bg-white shadow border-b border-blue-100">
         <div className="px-4 h-14 flex items-center justify-between">
-          <Link to="/dashboard" className="text-blue-800 font-extrabold text-lg flex items-center gap-2">
-            <img src="/school-logo.webp" alt="와석초등학교 교표" className="h-9 w-9 object-contain" />
-            <span>와석초 연수관리 플랫폼</span>
+          <Link to="/dashboard" className="text-blue-800 font-extrabold text-lg">
+            <SchoolBranding logoClassName="h-9 w-9 object-contain text-xl" titleClassName="font-extrabold text-lg" />
           </Link>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -77,9 +77,12 @@ const Layout = ({ children }: LayoutProps) => {
       <div className="md:flex">
         <aside className="hidden md:flex md:w-80 md:flex-shrink-0 min-h-screen bg-white border-r border-blue-100 shadow-sm flex-col">
           <div className="h-24 flex items-center justify-center px-5 border-b border-blue-100">
-            <Link to="/dashboard" className="text-blue-800 text-center leading-tight flex flex-col items-center">
-              <img src="/school-logo.webp" alt="와석초등학교 교표" className="h-11 w-11 object-contain mb-1" />
-              <div className="font-extrabold text-2xl tracking-tight">와석초 연수관리 플랫폼</div>
+            <Link to="/dashboard" className="text-blue-800 text-center leading-tight">
+              <SchoolBranding
+                layout="vertical"
+                logoClassName="h-11 w-11 object-contain text-2xl mb-1"
+                titleClassName="font-extrabold text-2xl tracking-tight"
+              />
             </Link>
           </div>
           <nav className="p-3 space-y-1">

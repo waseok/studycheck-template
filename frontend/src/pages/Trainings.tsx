@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { getTrainings, createTraining, updateTraining, deleteTraining } from '../api/trainings'
-import { sendIncompleteReminders } from '../api/reminders'
 import { isAdmin, getRole } from '../api/auth'
 import { Training, User } from '../types'
 import apiClient from '../api/client'
@@ -458,21 +457,6 @@ const Trainings = () => {
                 title="참여자 추가/제거"
               >
                 👥 참여자
-              </button>
-              <button
-                onClick={async () => {
-                  if (!confirm('미이수자에게 알림 메일을 발송하시겠습니까?')) return
-                  try {
-                    const result = await sendIncompleteReminders(training.id)
-                    alert(result.message)
-                  } catch (error: any) {
-                    alert(error.response?.data?.error || '알림 발송 중 오류가 발생했습니다.')
-                  }
-                }}
-                className="text-yellow-600 hover:text-yellow-900"
-                title="미이수자 알림 발송"
-              >
-                📧 알림
               </button>
               {isTrainingAdmin && (
                 <button

@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: studycheck-template-db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: studycheck
+      POSTGRES_PASSWORD: studycheck
+      POSTGRES_DB: studycheck_template
+    volumes:
+      - studycheck_pg_data:/data
+
+volumes:
+  studycheck_pg_data:

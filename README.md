@@ -1,14 +1,22 @@
-# 의무연수 안내 취합 통합 플랫폼
+# Studycheck Template — 학교 연수관리 플랫폼
 
-교직원 연수 안내, 이수번호 취합, 통계, 자동 리마인더 기능을 제공하는 웹 플랫폼
+학교별로 **GitHub 템플릿 복제 → Vercel 배포 → `/setup`** 만으로 운영할 수 있는 연수관리 플랫폼 템플릿입니다.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fwaseok%2Fstudycheck-template&project-name=my-school-studycheck)
+
+**학교 담당자용 배포 가이드:** [DEPLOY.md](./DEPLOY.md)
+
+---
 
 ## 프로젝트 구조
 
 ```
 .
-├── frontend/          # React + TypeScript + Vite 프론트엔드
-├── backend/           # Node.js + Express + TypeScript 백엔드
-└── PROJECT_PLAN.md    # 프로젝트 계획서
+├── api/               # Vercel Serverless API 진입점
+├── frontend/          # React + Vite 프론트엔드
+├── backend/           # Express API + Prisma
+├── vercel.json        # Vercel 단일 배포 설정 (루트)
+└── DEPLOY.md          # 학교 배포 가이드
 ```
 
 ## 기술 스택

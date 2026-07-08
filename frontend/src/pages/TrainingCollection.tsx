@@ -9,7 +9,6 @@ import {
 } from '../api/participants'
 import { getTrainings } from '../api/trainings'
 import { getUsers } from '../api/users'
-import { sendIncompleteReminders } from '../api/reminders'
 import { TrainingParticipant, Training, User } from '../types'
 
 const TrainingCollection = () => {
@@ -19,7 +18,6 @@ const TrainingCollection = () => {
   const [participants, setParticipants] = useState<TrainingParticipant[]>([])
   const [filteredParticipants, setFilteredParticipants] = useState<TrainingParticipant[]>([])
   const [loading, setLoading] = useState(false)
-  const [sending, setSending] = useState(false)
   const [sortBy, setSortBy] = useState<'default' | 'incomplete'>('default')
   const [filterIncomplete, setFilterIncomplete] = useState(false)
   const [showCompletionHelp, setShowCompletionHelp] = useState(false)
@@ -208,23 +206,6 @@ const TrainingCollection = () => {
     }
   }
 
-  const handleSendIncompleteReminders = async () => {
-    if (!id) return
-    
-    if (!confirm('미이수자에게 알림 메일을 발송하시겠습니까?')) return
-
-    setSending(true)
-    try {
-      const result = await sendIncompleteReminders(id)
-      alert(result.message)
-      fetchData()
-    } catch (error: any) {
-      alert(error.response?.data?.error || '알림 발송 중 오류가 발생했습니다.')
-    } finally {
-      setSending(false)
-    }
-  }
-
   const completedCount = participants.filter(p => p.status === 'completed').length
   const totalCount = participants.length
   const completionRate = totalCount > 0 ? (completedCount / totalCount) * 100 : 0
@@ -317,15 +298,6 @@ const TrainingCollection = () => {
             {training?.name || '연수 취합'}
           </h1>
           <div className="flex shrink-0 gap-2 flex-wrap justify-end">
-            {adminUser && incompleteCount > 0 && (
-              <button
-                onClick={handleSendIncompleteReminders}
-                disabled={sending}
-                className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium flex items-center gap-1.5"
-              >
-                📧 {sending ? '발송 중...' : '미이수자 알림 발송'}
-              </button>
-            )}
             <button
               onClick={handleExportToExcel}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-1.5"

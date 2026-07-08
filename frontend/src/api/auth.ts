@@ -115,20 +115,7 @@ export const hasRole = (allowed: AppRole[]): boolean => {
   return false
 }
 
-// Google 로그인
-export const loginGoogle = async (token: string): Promise<LoginResponse> => {
-  const response = await apiClient.post<LoginResponse>('/auth/login-google', { token })
-  if (response.data.success && response.data.token) {
-    localStorage.setItem('token', response.data.token)
-    localStorage.setItem('isAdmin', String(response.data.isAdmin || false))
-    if (response.data.role) {
-      localStorage.setItem('role', response.data.role)
-    } else {
-      localStorage.setItem('role', response.data.isAdmin ? 'SUPER_ADMIN' : 'USER')
-    }
-  }
-  return response.data
-}// 회원가입 (일반 사용자용, 인증 불필요)
+// 회원가입 (일반 사용자용, 인증 불필요)
 export const register = async (userData: {
   name: string
   email: string
@@ -139,7 +126,7 @@ export const register = async (userData: {
   class?: string
 }): Promise<{ success: boolean; message: string }> => {
   // 회원가입은 인증이 필요 없으므로 별도 클라이언트 사용
-  const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000/api' : 'https://studycheck.onrender.com/api')
+  const apiUrl = import.meta.env.VITE_API_URL || '/api'
   const response = await fetch(`${apiUrl}/auth/register`, {
     method: 'POST',
     headers: {

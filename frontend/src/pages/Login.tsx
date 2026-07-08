@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { loginInitial, loginPin, login, register, isAuthenticated } from '../api/auth'
-import GoogleLoginButton from '../components/GoogleLoginButton'
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+import SchoolBranding from '../components/SchoolBranding'
 
 const Login = () => {
   const [activeTab, setActiveTab] = useState<'initial' | 'pin' | 'admin'>('pin')
@@ -40,7 +38,6 @@ const Login = () => {
   }
 
   const userTypes = ['교원', '직원', '공무직', '기간제교사', '교육공무직', '교직원', '교육활동 참여자']
-  const hasGoogleClientId = GOOGLE_CLIENT_ID && GOOGLE_CLIENT_ID.trim() !== ''
 
   const handleInitialLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -226,14 +223,11 @@ const Login = () => {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
       <div className="max-w-md w-full space-y-8 p-8">
         <div className="flex flex-col items-center">
-          <img
-            src="/school-logo.webp"
-            alt="와석초등학교 교표"
-            className="w-28 h-28 object-contain"
+          <SchoolBranding
+            logoClassName="w-28 h-28 object-contain text-5xl"
+            titleClassName="mt-4 text-center text-2xl font-extrabold text-gray-900 leading-snug"
+            layout="vertical"
           />
-          <h2 className="mt-4 text-center text-2xl font-extrabold text-gray-900 leading-snug">
-            와석초 연수 관리 통합 플랫폼
-          </h2>
         </div>
 
         {/* 탭 */}
@@ -434,43 +428,15 @@ const Login = () => {
           </form>
         )}
 
-        {/* Google 로그인 버튼 */}
         <div className="mt-6">
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-50 text-gray-500">또는</span>
-            </div>
-          </div>
-          <div className="mt-6 space-y-3">
-            {hasGoogleClientId && (
-              <GoogleLoginButton
-                onError={setError}
-                onLoadingChange={setLoading}
-              />
-            )}
-            <button
-              type="button"
-              onClick={() => setShowRegister(true)}
-              disabled={loading}
-              className="w-full px-4 py-3 border-2 border-indigo-600 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-            >
-              회원가입
-            </button>
-          </div>
-        </div>
-
-        {/* 연구학교 안내 */}
-        <div className="mt-4 text-center border-t border-gray-200 pt-4">
-          <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-3">
-            <span className="text-xl">🏫</span>
-            <div className="text-left">
-              <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">학교업무개선 연구학교 (2025~2027)</p>
-              <p className="text-sm font-semibold text-indigo-900">연구 결과물 · 파주 와석초등학교</p>
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowRegister(true)}
+            disabled={loading}
+            className="w-full px-4 py-3 border-2 border-indigo-600 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          >
+            회원가입
+          </button>
         </div>
       </div>
 

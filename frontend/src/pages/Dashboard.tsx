@@ -6,6 +6,8 @@ import { isAdmin, getRole } from '../api/auth'
 import { getMyTrainings } from '../api/participants'
 import { getDashboardSummary, DashboardTrainingSummary } from '../api/stats'
 import { TrainingParticipant } from '../types'
+import SchoolBranding from '../components/SchoolBranding'
+import { useSettings } from '../contexts/SettingsContext'
 
 const Dashboard = () => {
   const [myTrainings, setMyTrainings] = useState<TrainingParticipant[]>([])
@@ -15,6 +17,7 @@ const Dashboard = () => {
   const adminUser = isAdmin()
   const role = getRole()
   const managerUser = adminUser || role === 'TRAINING_ADMIN'
+  const { appTitle } = useSettings()
   
   useEffect(() => {
     fetchData()
@@ -85,10 +88,10 @@ const Dashboard = () => {
       <div className="space-y-6">
         <div>
           <h1 className="text-4xl font-bold text-blue-800 mb-2 flex items-center gap-3">
-            <img src="/school-logo.webp" alt="와석초등학교 교표" className="h-14 w-14 object-contain" />
+            <SchoolBranding showTitle={false} logoClassName="h-14 w-14 object-contain text-3xl" />
             <span>대시보드</span>
           </h1>
-          <p className="text-lg text-gray-700">와석초 연수 관리 통합 플랫폼에 오신 것을 환영합니다.</p>
+          <p className="text-lg text-gray-700">{appTitle} 플랫폼에 오신 것을 환영합니다.</p>
         </div>
 
         {/* 나의 연수 목록 */}
