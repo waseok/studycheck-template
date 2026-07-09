@@ -1,5 +1,17 @@
 const VERCEL_API = 'https://api.vercel.com'
 
+interface VercelTeam {
+  id: string
+  slug: string
+  name: string
+}
+
+interface VercelUser {
+  id: string
+  username: string
+  email: string
+}
+
 async function vercelFetch(
   token: string,
   apiPath: string,
@@ -15,6 +27,75 @@ async function vercelFetch(
       ...(init?.headers || {}),
     },
   })
+}
+
+async function parseVercelJson<T>(response: Response, fallbackMessage: string): Promise<T> {
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`${fallbackMessage}: ${text}`)
+  }
+  return response.json() as Promise<T>
+}
+
+export async function getVercelUser(token: string): Promise<VercelUser> {
+  const response = await vercelFetch(token, '/v2/user')
+  return parseVercelJson<VercelUser>(response, 'Vercel 사용자 조회 실패')
+}
+
+export async function listVercelTeams(token: string): Promise<VercelTeam[]> {
+  const response = await vercelFetch(token, '/v2/teams')
+  const result = await parseVercelJson<{ teams?: VercelTeam[] }>(response, 'Vercel 팀 목록 조회 실패')
+  return result.teams || []
+}
+
+export async function createVercelProject(options: {
+  token: string
+  projectName: string
+  repo: string
+  repoId?: number
+  teamId?: string
+}): Promise<{ id: string; name: string }> {
+  const response = await vercelFetch(
+    options.token,
+    '/v10/projects',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        name: options.projectName,
+        framework: null,
+        gitRepository: {
+          type: 'github',
+          repo: options.repo,
+          repoId: options.repoId,
+        },
+      }),
+    },
+    options.teamId
+  )
+
+  return parseVercelJson<{ id: string; name: string }>(response, 'Vercel 프로젝트 생성 실패')
+}
+
+export async function triggerVercelDeployment(options: {
+  token: string
+  projectName: string
+  teamId?: string
+}): Promise<{ url: string }> {
+  const response = await vercelFetch(
+    options.token,
+    '/v13/deployments',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        name: options.projectName,
+        target: 'production',
+      }),
+    },
+    options.teamId
+  )
+
+  const result = await parseVercelJson<{ url: string }>(response, 'Vercel 배포 시작 실패')
+  return result
 }
 
 /** Vercel 프로젝트 환경변수 생성 또는 갱신 */
@@ -133,4 +214,12 @@ export function getRuntimeVercelUrl(): string | undefined {
     return `https://${process.env.VERCEL_URL}`
   }
   return undefined
+}
+
+export function getVercelOAuthConfig() {
+  return {
+    clientId: process.env.VERCEL_CLIENT_ID || '',
+    authorizeUrl: 'https://vercel.com/oauth/authorize',
+    configured: Boolean(process.env.VERCEL_CLIENT_ID),
+  }
 }

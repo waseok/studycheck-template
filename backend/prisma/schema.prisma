@@ -184,6 +184,25 @@ model AppSettings {
   @@map("app_settings")
 }
 
+model OnboardingSession {
+  id             String   @id @default(uuid())
+  status         String   @default("CREATED")
+  repoName       String?  @map("repo_name")
+  githubOwner    String?  @map("github_owner")
+  githubRepo     String?  @map("github_repo")
+  vercelProjectId String? @map("vercel_project_id")
+  vercelProjectName String? @map("vercel_project_name")
+  vercelTeamId   String?  @map("vercel_team_id")
+  supabaseProjectRef String? @map("supabase_project_ref")
+  supabaseProjectUrl String? @map("supabase_project_url")
+  deploymentUrl  String?  @map("deployment_url")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("onboarding_sessions")
+}
+
 model TrainingNotice {
   id          String   @id @default(uuid())
   order       Int      // 순번

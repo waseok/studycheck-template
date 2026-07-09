@@ -5,6 +5,7 @@ import { getSetupStatus } from './api/settings'
 import { useSettings } from './contexts/SettingsContext'
 
 const Login = lazy(() => import('./pages/Login'))
+const Onboarding = lazy(() => import('./pages/Onboarding'))
 const SetupWizard = lazy(() => import('./pages/SetupWizard'))
 const SetPin = lazy(() => import('./pages/SetPin'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -26,6 +27,7 @@ const SetupGate = ({ children }: { children: ReactNode }) => {
   const location = useLocation()
   const { settings, loading: settingsLoading } = useSettings()
   const [checking, setChecking] = useState(true)
+  const [dbConnected, setDbConnected] = useState(false)
   const [setupCompleted, setSetupCompleted] = useState(false)
   const [backendError, setBackendError] = useState(false)
 
@@ -33,10 +35,12 @@ const SetupGate = ({ children }: { children: ReactNode }) => {
     getSetupStatus()
       .then((status) => {
         setBackendError(false)
+        setDbConnected(status.dbConnected)
         setSetupCompleted(status.setupCompleted)
       })
       .catch(() => {
         setBackendError(true)
+        setDbConnected(false)
         setSetupCompleted(settings.setupCompleted)
       })
       .finally(() => setChecking(false))
@@ -67,11 +71,15 @@ const SetupGate = ({ children }: { children: ReactNode }) => {
     )
   }
 
-  if (!setupCompleted && location.pathname !== '/setup') {
+  if (!dbConnected && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />
+  }
+
+  if (dbConnected && !setupCompleted && location.pathname !== '/setup') {
     return <Navigate to="/setup" replace />
   }
 
-  if (setupCompleted && location.pathname === '/setup') {
+  if (setupCompleted && (location.pathname === '/setup' || location.pathname === '/onboarding')) {
     return <Navigate to="/login" replace />
   }
 
@@ -89,6 +97,7 @@ function App() {
       <SetupGate>
         <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">페이지를 불러오는 중...</div>}>
           <Routes>
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/setup" element={<SetupWizard />} />
             <Route path="/login" element={<Login />} />
             <Route

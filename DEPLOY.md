@@ -1,118 +1,118 @@
-# Studycheck Template — 학교 배포 가이드
+# Studycheck Template — 온보딩 배포 가이드
 
-학교 담당자가 **GitHub 템플릿 복제 → Vercel 배포 → `/setup`에서 DB·학교 정보 입력**만으로 연수관리 사이트를 만드는 방법입니다.
+이 템플릿의 목적은 학교가 GitHub/Vercel/Supabase를 **각자 자기 계정으로 연결**해도,  
+복제부터 첫 배포까지 한 흐름으로 이어지게 만드는 것입니다.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fwaseok%2Fstudycheck-template&project-name=my-school-studycheck&repository-name=my-school-studycheck)
+## 전체 흐름
 
-> **환경변수는 Vercel 배포 시 넣지 않아도 됩니다.**  
-> 배포 후 `/setup` 첫 단계에서 Supabase URI와 Vercel 토큰을 입력하면 자동으로 등록됩니다.
-
----
-
-## 전체 흐름 (약 10분)
-
-```
-1. GitHub 「Use this template」→ 학교 전용 저장소 생성
-2. Supabase 새 프로젝트 생성
-3. Vercel 「Deploy」 (환경변수 없이 배포 가능)
-4. 배포 URL 접속 → /setup
-   ① DATABASE_URL + Vercel Token 입력 → 자동 환경변수 적용
-   ② 학교 이름·비밀번호·관리자 입력
-5. 완료 → 로그인
+```text
+1. 온보딩 사이트 배포
+2. /onboarding 접속
+3. GitHub 토큰으로 새 저장소 생성
+4. Vercel 토큰으로 새 프로젝트 생성
+5. Supabase 연결 또는 생성
+6. DATABASE_URL / JWT_SECRET 자동 주입
+7. 재배포 후 /setup에서 학교 정보 입력
 ```
 
----
+## 1. Vercel에 온보딩 사이트 배포
 
-## 1단계: GitHub 템플릿 복제
+1. 이 저장소를 Vercel에 새 프로젝트로 연결
+2. **Root Directory는 비워 둠**
+3. 배포 시 환경변수는 없어도 됨
 
-1. https://github.com/waseok/studycheck-template
-2. **Use this template** → Create a new repository
+이 단계의 목적은 `학교별 사이트`를 만드는 것이 아니라,  
+**복제/연결을 도와주는 온보딩 앱**을 먼저 띄우는 것입니다.
 
----
+## 2. `/onboarding`에서 하는 일
 
-## 2단계: Supabase 프로젝트 생성
+### GitHub
+- GitHub 토큰으로 템플릿 저장소를 새 저장소로 복제
+- 저장소 이름, 공개/비공개 선택
 
-1. https://supabase.com → **New project**
-2. DB 비밀번호 설정 후 보관
-3. **Connect** → **Session pooler** → URI 복사 (나중에 `/setup`에 붙여넣음)
+필요 권한:
+- repo
 
-> Direct connection 대신 **Session pooler**를 사용하세요.
+### Vercel
+- Vercel 토큰으로 프로젝트 생성
+- GitHub 저장소를 새 프로젝트에 연결
 
----
+필요 권한:
+- 프로젝트 생성
+- 환경변수 수정
+- 재배포
 
-## 3단계: Vercel 배포
+### Supabase
+두 방식 중 하나:
 
-1. 상단 **Deploy with Vercel** 버튼 클릭 (또는 Vercel에서 GitHub 저장소 import)
-2. **Root Directory**: 비워 둠 (루트 배포)
-3. **Environment Variables**: 비워 두고 Deploy 가능
-4. 배포 완료 후 URL 확인 (예: `https://my-school-studycheck.vercel.app`)
+1. **기존 프로젝트 연결**
+   - Session pooler `DATABASE_URL` 입력
+2. **관리 토큰으로 프로젝트 생성 후 연결**
+   - 조직 선택
+   - 프로젝트명/리전/DB 비밀번호 입력
+   - 생성 후 Session pooler URI는 Connect 화면에서 확인
 
----
+## 3. `/onboarding` 마지막 단계
 
-## 4단계: `/setup` 마법사
+`Vercel 환경변수 주입 + 재배포` 버튼을 누르면:
 
-### ① DB · 환경변수 (자동화)
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `NODE_ENV=production`
 
-| 입력 항목 | 설명 |
-|-----------|------|
-| **DATABASE_URL** | Supabase Session pooler URI |
-| **JWT_SECRET** | 자동 생성됨 (그대로 사용 가능) |
-| **Vercel Access Token** | [토큰 발급](https://vercel.com/account/settings/tokens) 후 붙여넣기 |
+이 자동 등록되고, 재배포가 시작됩니다.
 
-**「연결 및 적용」** 클릭 시:
+## 4. `/setup`
 
-- DB 연결 테스트 + 스키마 자동 반영
-- Vercel 프로젝트에 `DATABASE_URL`, `JWT_SECRET` 자동 등록
-- 재배포 시작 (1~2분 후 다음 단계로 자동 이동)
+인프라 연결이 끝나면 `/setup`은 학교 정보만 받습니다.
 
-### ② 학교 정보 · 비밀번호 · 관리자
+- 학교 이름
+- 학교 로고 URL
+- 교직원 초기 비밀번호
+- 관리자 비밀번호
+- 관리자 이름
+- 관리자 이메일
 
-- 학교 이름, 로고(선택)
-- 교직원 초기 비밀번호, 관리자 비밀번호
-- 관리자 이름·이메일
+## 토큰 사용 방식
 
----
+현재 구현은 **OAuth가 설정되어 있으면 확장 가능**,  
+기본 동작은 **토큰 기반 fallback**입니다.
 
-## 로컬 개발 (개발자용)
+즉, 지금 바로 테스트할 때는 아래 세 가지 중 필요한 것만 넣으면 됩니다.
 
-```bash
-cp .env.example backend/.env
-# backend/.env 에 DATABASE_URL, JWT_SECRET 입력
+- GitHub Personal Access Token
+- Vercel Token
+- Supabase Management Token (선택)
 
-cd backend && npm install && npm run db:push && npm run dev
-# 다른 터미널
-npm run dev:frontend
-```
+토큰은 브라우저의 온보딩 세션에만 임시 보관되며, 장기 저장을 전제로 하지 않습니다.
 
-로컬에서는 `backend/.env`에 DB가 설정되어 있으면 `/setup`의 DB 단계가 생략됩니다.
+## 실제 테스트 추천 순서
 
----
+1. 본인 GitHub 계정에서 새 저장소가 생성되는지 확인
+2. 본인 Vercel 계정에서 새 프로젝트가 생성되는지 확인
+3. 본인 Supabase 프로젝트의 Session pooler URI로 연결되는지 확인
+4. 재배포 후 `/setup`으로 넘어가는지 확인
+5. 학교 정보 입력 후 로그인까지 확인
 
 ## 문제 해결
 
-### 「연결 및 적용」 실패
+### `/onboarding` 대신 계속 `로딩 중...`
+- 최신 배포인지 확인
+- Vercel Runtime 로그에서 `/api/settings/status` 확인
+- Root Directory가 `frontend`가 아닌지 확인
 
-- DATABASE_URL이 Session pooler인지 확인
-- 비밀번호 URL 인코딩 (`!` → `%21`)
-- Vercel Token에 프로젝트 수정 권한이 있는지 확인
+### GitHub 저장소 생성 실패
+- GitHub 토큰에 `repo` 권한이 있는지 확인
+- 이미 같은 이름의 저장소가 있는지 확인
 
-### 재배포 후에도 DB 단계가 반복됨
+### Vercel 프로젝트 생성 실패
+- Vercel 토큰 권한 확인
+- Vercel 계정이 GitHub 저장소 import 가능한 상태인지 확인
 
-- 1~2분 더 기다린 후 새로고침
-- Vercel → Settings → Environment Variables에 `DATABASE_URL`이 있는지 확인
+### Supabase 연결 실패
+- Direct connection이 아니라 **Session pooler** URI인지 확인
+- 비밀번호 URL 인코딩 확인 (`!` → `%21`)
 
-### API 404
-
-- Vercel Root Directory가 `frontend`로 되어 있지 않은지 확인
-
----
-
-## 환경변수 (자동 vs 수동)
-
-| 변수 | `/setup` 자동 | 수동 설정 |
-|------|---------------|-----------|
-| `DATABASE_URL` | ✅ | 가능 |
-| `JWT_SECRET` | ✅ | 가능 |
-| `NODE_ENV` | ✅ (`production`) | — |
-
-수동으로 Vercel에 넣어도 되고, `/setup`에서 자동 등록해도 됩니다.
+### 재배포 후에도 `/setup`으로 안 넘어감
+- Vercel 환경변수에 `DATABASE_URL`, `JWT_SECRET`가 들어갔는지 확인
+- 재배포가 완료될 때까지 1~2분 기다린 뒤 새로고침

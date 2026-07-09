@@ -12,6 +12,7 @@ import signatureRoutes from './routes/signatures'
 import trainingNoticeRoutes from './routes/trainingNotices'
 import meetingRoutes from './routes/meetings'
 import groupRoutes from './routes/groups'
+import onboardingRoutes from './routes/onboarding'
 import settingsRoutes from './routes/settings'
 
 export function createApp() {
@@ -53,6 +54,7 @@ export function createApp() {
   app.use('/api/training-notices', trainingNoticeRoutes)
   app.use('/api/meetings', meetingRoutes)
   app.use('/api/groups', groupRoutes)
+  app.use('/api/onboarding', onboardingRoutes)
   app.use('/api/settings', settingsRoutes)
 
   app.get('/api/health', (_req, res) => {
