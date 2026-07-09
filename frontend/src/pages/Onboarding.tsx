@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { TokenGuidePanel } from '../components/onboarding/TokenGuidePanel'
 import {
   connectExistingSupabase,
   connectGitHubRepo,
@@ -279,6 +280,7 @@ const Onboarding = () => {
                 <option value="public">public</option>
               </select>
             </div>
+            <TokenGuidePanel guideId="github" />
             <input
               type="password"
               value={githubForm.githubToken}
@@ -294,6 +296,7 @@ const Onboarding = () => {
 
           <section className="space-y-3 border-t border-gray-100 pt-6">
             <h2 className="text-xl font-bold text-gray-900">2. Vercel 프로젝트 연결</h2>
+            <TokenGuidePanel guideId="vercel" />
             <input
               type="password"
               value={vercelForm.vercelToken}
@@ -335,6 +338,7 @@ const Onboarding = () => {
           <section className="space-y-3 border-t border-gray-100 pt-6">
             <h2 className="text-xl font-bold text-gray-900">3. Supabase 연결</h2>
             <p className="text-sm text-gray-600">완전 자동 생성이 어려울 수 있어, 관리 토큰으로 프로젝트를 만들거나 기존 Session pooler URI를 직접 연결할 수 있습니다.</p>
+            <TokenGuidePanel guideId="supabase-token" />
             <input
               type="password"
               value={supabaseForm.supabaseToken}
@@ -399,6 +403,7 @@ const Onboarding = () => {
                 className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
               />
             </div>
+            <TokenGuidePanel guideId="supabase-database" />
             <textarea
               value={supabaseForm.databaseUrl}
               onChange={(e) => setSupabaseForm((prev) => ({ ...prev, databaseUrl: e.target.value }))}
