@@ -232,6 +232,24 @@ const Onboarding = () => {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">온보딩을 준비하는 중...</div>
   }
 
+  if (!config) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-indigo-50 to-white px-4">
+        <div className="max-w-md w-full rounded-2xl border border-red-200 bg-white p-6 shadow-lg text-center space-y-4">
+          <h1 className="text-xl font-bold text-gray-900">온보딩을 불러오지 못했습니다</h1>
+          <p className="text-sm text-red-700">{error || '서버 설정을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.'}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+          >
+            다시 시도
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white py-10 px-4">
       <div className="max-w-4xl mx-auto">
@@ -260,7 +278,7 @@ const Onboarding = () => {
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-gray-900">1. GitHub 템플릿 복제</h2>
             <p className="text-sm text-gray-600">
-              {config?.github.configured
+              {config.github?.configured
                 ? 'GitHub OAuth가 설정되어 있으면 추후 자동 연결로 확장할 수 있습니다. 지금은 토큰 기반 fallback으로 바로 진행됩니다.'
                 : '현재는 GitHub Personal Access Token 방식으로 템플릿 저장소를 새 저장소로 복제합니다.'}
             </p>
