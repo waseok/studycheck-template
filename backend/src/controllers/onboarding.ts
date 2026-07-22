@@ -125,7 +125,11 @@ export const connectGitHubRepo = async (req: Request, res: Response) => {
     sendSession(res, updated)
   } catch (error) {
     console.error('GitHub onboarding error:', error)
-    res.status(500).json({ error: 'GitHub 템플릿 저장소 생성에 실패했습니다.' })
+    const detail = error instanceof Error ? error.message : String(error)
+    res.status(500).json({
+      error: 'GitHub 템플릿 저장소 생성에 실패했습니다.',
+      detail,
+    })
   }
 }
 
@@ -156,7 +160,8 @@ export const getVercelTeams = async (req: Request, res: Response) => {
     })
   } catch (error) {
     console.error('Vercel team lookup error:', error)
-    res.status(500).json({ error: 'Vercel 팀 목록을 불러오지 못했습니다.' })
+    const detail = error instanceof Error ? error.message : String(error)
+    res.status(500).json({ error: 'Vercel 팀 목록을 불러오지 못했습니다.', detail })
   }
 }
 
@@ -205,7 +210,8 @@ export const connectVercelProject = async (req: Request, res: Response) => {
     sendSession(res, updated)
   } catch (error) {
     console.error('Vercel project creation error:', error)
-    res.status(500).json({ error: 'Vercel 프로젝트 생성에 실패했습니다.' })
+    const detail = error instanceof Error ? error.message : String(error)
+    res.status(500).json({ error: 'Vercel 프로젝트 생성에 실패했습니다.', detail })
   }
 }
 

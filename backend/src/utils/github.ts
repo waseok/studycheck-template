@@ -31,7 +31,14 @@ async function githubFetch<T>(
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`GitHub API error (${response.status}): ${text}`)
+    let detail = text
+    try {
+      const parsed = JSON.parse(text) as { message?: string; errors?: Array<{ message?: string }> }
+      detail = parsed.message || parsed.errors?.map((e) => e.message).filter(Boolean).join(', ') || text
+    } catch {
+      // raw text 유지
+    }
+    throw new Error(`GitHub API error (${response.status}): ${detail}`)
   }
 
   return response.json() as Promise<T>

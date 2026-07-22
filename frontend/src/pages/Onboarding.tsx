@@ -131,7 +131,10 @@ const Onboarding = () => {
       const token = sessionToken || (await startSession())
       await task(token)
     } catch (err: any) {
-      setError(err.response?.data?.error || '요청을 처리하지 못했습니다.')
+      const data = err.response?.data
+      const message = data?.error || err.message || '요청을 처리하지 못했습니다.'
+      const detail = typeof data?.detail === 'string' ? data.detail : ''
+      setError(detail ? `${message}\n${detail}` : message)
     } finally {
       setSubmitting(false)
     }
@@ -272,8 +275,17 @@ const Onboarding = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 shadow-lg p-6 space-y-6">
-          {error && <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+          {error && (
+            <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-wrap">
+              {error}
+            </div>
+          )}
           {hint && <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">{hint}</div>}
+          {submitting && (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+              요청을 처리하는 중입니다. 잠시만 기다려주세요...
+            </div>
+          )}
 
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-gray-900">1. GitHub 템플릿 복제</h2>
@@ -306,14 +318,22 @@ const Onboarding = () => {
               placeholder="GitHub token (repo 권한)"
               className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
             />
-            <button type="button" onClick={handleGitHub} disabled={submitting} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-              GitHub 저장소 생성
+            <button type="button" onClick={handleGitHub} disabled={submitting || !githubForm.githubToken.trim()} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+              {submitting ? '생성 중...' : 'GitHub 저장소 생성'}
             </button>
+            {!githubForm.githubToken.trim() && (
+              <p className="text-xs text-amber-700">GitHub 토큰을 입력해야 생성할 수 있습니다.</p>
+            )}
             {session?.github?.repoUrl && <p className="text-sm text-green-700">생성 완료: <a className="underline" href={session.github.repoUrl} target="_blank" rel="noreferrer">{session.github.repoUrl}</a></p>}
           </section>
 
           <section className="space-y-3 border-t border-gray-100 pt-6">
             <h2 className="text-xl font-bold text-gray-900">2. Vercel 프로젝트 연결</h2>
+            {!session?.github?.repo && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                1단계 GitHub 저장소 생성이 끝난 뒤에 Vercel 프로젝트를 만들 수 있습니다.
+              </p>
+            )}
             <TokenGuidePanel guideId="vercel" />
             <input
               type="password"
@@ -323,7 +343,7 @@ const Onboarding = () => {
               className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
             />
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={handleLoadVercelTeams} disabled={submitting} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
+              <button type="button" onClick={handleLoadVercelTeams} disabled={submitting || !vercelForm.vercelToken.trim()} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
                 팀 목록 불러오기
               </button>
               {vercelTeams.length > 0 && (
@@ -347,10 +367,10 @@ const Onboarding = () => {
               placeholder="Vercel 프로젝트 이름"
               className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
             />
-            <button type="button" onClick={handleVercel} disabled={submitting || !session?.github?.repo} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-              Vercel 프로젝트 생성
+            <button type="button" onClick={handleVercel} disabled={submitting || !session?.github?.repo || !vercelForm.vercelToken.trim()} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+              {submitting ? '생성 중...' : 'Vercel 프로젝트 생성'}
             </button>
-            {session?.vercel?.projectId && <p className="text-sm text-green-700">Vercel 프로젝트 연결 완료</p>}
+            {session?.vercel?.projectId && <p className="text-sm text-green-700">Vercel 프로젝트 연결 완료: {session.vercel.projectName}</p>}
           </section>
 
           <section className="space-y-3 border-t border-gray-100 pt-6">
