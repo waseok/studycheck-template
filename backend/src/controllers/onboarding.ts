@@ -360,7 +360,7 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
   }
 
   try {
-    pushDatabaseSchema(session.supabase.databaseUrl)
+    await pushDatabaseSchema(session.supabase.databaseUrl)
     await ensureDefaultSettings(
       session.supabase.databaseUrl,
       session.supabase.projectUrl || undefined
