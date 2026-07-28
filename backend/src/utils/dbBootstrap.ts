@@ -1,9 +1,11 @@
-import { spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { PrismaClient } from '@prisma/client'
 
 const DB_CONNECT_TIMEOUT_SECONDS = 5
+
+// Postgres 에러 코드: 이미 존재하는 테이블/제약조건/인덱스 (재실행 시 무시해도 안전함)
+const ALREADY_EXISTS_ERROR_CODES = new Set(['42P07', '42710', '42701'])
 
 function getBackendDir(): string {
   const fromRoot = path.join(process.cwd(), 'backend')
@@ -16,23 +18,48 @@ function getBackendDir(): string {
   throw new Error('backend/prisma/schema.prisma 경로를 찾을 수 없습니다.')
 }
 
-function runPrismaDbPush(backendDir: string, databaseUrl: string): void {
-  const prismaEntry = path.join(backendDir, 'node_modules', 'prisma', 'build', 'index.js')
-  const result = spawnSync(process.execPath, [prismaEntry, 'db', 'push', '--skip-generate'], {
-    cwd: backendDir,
-    env: { ...process.env, DATABASE_URL: withDatabaseTimeout(databaseUrl) },
-    encoding: 'utf-8',
-  })
-
-  if (result.status !== 0) {
-    const detail = result.stderr || result.stdout || 'prisma db push failed'
-    console.error('prisma db push failed:', detail)
-    throw new Error(detail)
-  }
+function splitSqlStatements(sql: string): string[] {
+  return sql
+    .split(/;\s*(?:\r?\n|$)/m)
+    .map((chunk) =>
+      chunk
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('--'))
+        .join('\n')
+        .trim()
+    )
+    .filter((statement) => statement.length > 0)
 }
 
-export function pushDatabaseSchema(databaseUrl: string): void {
-  runPrismaDbPush(getBackendDir(), databaseUrl)
+/**
+ * 새 Supabase DB에 스키마를 적용한다.
+ * Vercel 서버리스 함수 번들에는 Prisma CLI/엔진이 포함되지 않으므로
+ * (vercel.json includeFiles가 .prisma/**, prisma/**만 포함),
+ * `prisma db push`를 spawn하는 대신 미리 생성해 둔 prisma/init.sql을
+ * 이미 번들된 @prisma/client로 직접 실행한다.
+ */
+export async function pushDatabaseSchema(databaseUrl: string): Promise<void> {
+  const initSqlPath = path.join(getBackendDir(), 'prisma', 'init.sql')
+  const sql = fs.readFileSync(initSqlPath, 'utf-8')
+  const statements = splitSqlStatements(sql)
+
+  const client = new PrismaClient({
+    datasources: { db: { url: withDatabaseTimeout(databaseUrl) } },
+  })
+  try {
+    for (const statement of statements) {
+      try {
+        await withTimeout(client.$executeRawUnsafe(statement), 'Schema statement apply')
+      } catch (error) {
+        const code = (error as { meta?: { code?: string } })?.meta?.code
+        if (!code || !ALREADY_EXISTS_ERROR_CODES.has(code)) {
+          throw error
+        }
+      }
+    }
+  } finally {
+    await client.$disconnect()
+  }
 }
 
 function withDatabaseTimeout(databaseUrl: string): string {
