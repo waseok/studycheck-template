@@ -3,6 +3,15 @@ import { getGitHubRepo } from './github'
 const VERCEL_API = 'https://api.vercel.com'
 const DEFAULT_GITHUB_APP_INSTALL = 'https://github.com/apps/vercel/installations/new'
 
+/** studycheck-template 기본 빌드 설정 (첫 배포 시 projectSettings 필수) */
+const STUDYCHECK_PROJECT_SETTINGS = {
+  framework: null,
+  installCommand: 'npm install && cd backend && npm install && cd ../frontend && npm install',
+  buildCommand: 'npm run vercel-build',
+  outputDirectory: 'frontend/dist',
+  devCommand: null,
+} as const
+
 interface VercelTeam {
   id: string
   slug: string
@@ -238,9 +247,10 @@ async function tryDeployFromGit(options: {
   defaultBranch: string
   teamId?: string
 }): Promise<{ ok: true; url?: string } | { ok: false; error: string }> {
+  // 신규 프로젝트는 projectSettings 또는 skipAutoDetectionConfirmation 필요
   const deployRes = await vercelFetch(
     options.token,
-    '/v13/deployments',
+    '/v13/deployments?skipAutoDetectionConfirmation=1',
     {
       method: 'POST',
       body: JSON.stringify({
@@ -254,6 +264,7 @@ async function tryDeployFromGit(options: {
           org: options.owner,
           repo: options.repo,
         },
+        projectSettings: STUDYCHECK_PROJECT_SETTINGS,
       }),
     },
     options.teamId
@@ -508,6 +519,8 @@ export async function triggerVercelDeployment(options: {
   const body: Record<string, unknown> = {
     name: options.projectName,
     target: 'production',
+    // 새 프로젝트/미확인 프레임워크는 이 설정이 없으면 missing_project_settings 로 실패함
+    projectSettings: STUDYCHECK_PROJECT_SETTINGS,
   }
   if (options.projectId) {
     body.project = options.projectId
@@ -524,7 +537,7 @@ export async function triggerVercelDeployment(options: {
 
   const response = await vercelFetch(
     options.token,
-    '/v13/deployments',
+    '/v13/deployments?skipAutoDetectionConfirmation=1',
     {
       method: 'POST',
       body: JSON.stringify(body),
