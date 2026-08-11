@@ -14,8 +14,11 @@ import {
 } from '../backend/src/utils/github'
 import {
   createVercelProject,
+  disableVercelDeploymentProtection,
+  ensureVercelProjectBuildSettings,
   ensureVercelProjectForProvision,
   ensureVercelProjectGitLinked,
+  getVercelProject,
   getVercelUser,
   listVercelTeams,
   sanitizeVercelProjectName,
@@ -402,6 +405,87 @@ async function handleVercelProject(req: any, res: any) {
   })
 }
 
+/**
+ * 이미 존재하는 Vercel 프로젝트를 현재 온보딩 세션에 연결합니다.
+ * 프로젝트를 새로 만들거나 삭제하지 않으며, 다음 단계에서 기존 projectId를 재사용합니다.
+ */
+async function handleVercelConnect(req: any, res: any) {
+  if (req.method !== 'POST') return json(res, 405, { error: '허용되지 않은 메서드입니다.' })
+  const session = unsealOnboardingSession(getBearerToken(req))
+  if (!session) return json(res, 401, { error: '온보딩 세션이 없습니다.' })
+
+  const body = await readJsonBody(req)
+  const token = String(body.vercelToken || session.tokens.vercelToken || '').trim()
+  const idOrName = String(body.projectIdOrName || '').trim()
+  const teamId = String(body.teamId || '').trim() || undefined
+
+  if (!token) return json(res, 400, { error: 'Vercel 토큰을 입력해주세요.' })
+  if (!idOrName) {
+    return json(res, 400, {
+      error: '기존 Vercel 프로젝트 이름 또는 Project ID를 입력해주세요.',
+    })
+  }
+
+  const project = await getVercelProject(token, idOrName, teamId)
+  if (!project) {
+    return json(res, 404, {
+      error:
+        `Vercel 프로젝트 "${idOrName}"을 찾을 수 없습니다. ` +
+        '프로젝트가 속한 개인 계정/팀을 올바르게 선택했는지 확인해주세요.',
+    })
+  }
+
+  const repoRef = resolveRepoSlug(session)
+  const linkedRepo =
+    project.link?.org && project.link?.repo
+      ? `${project.link.org}/${project.link.repo}`.toLowerCase()
+      : project.link?.repo?.toLowerCase()
+  const expectedRepo = repoRef ? `${repoRef.owner}/${repoRef.repo}`.toLowerCase() : undefined
+
+  // 다른 학교 저장소에 연결된 프로젝트를 실수로 재사용하는 것을 차단합니다.
+  if (
+    linkedRepo &&
+    expectedRepo &&
+    linkedRepo !== expectedRepo &&
+    linkedRepo !== repoRef?.repo.toLowerCase()
+  ) {
+    return json(res, 409, {
+      error:
+        `이 Vercel 프로젝트는 다른 GitHub 저장소(${linkedRepo})에 연결되어 있습니다. ` +
+        `1단계 저장소(${expectedRepo})와 같은 프로젝트를 선택해주세요.`,
+    })
+  }
+
+  // 기존 프로젝트는 보존하고, 안전한 런타임 설정만 현재 템플릿 값으로 보정합니다.
+  await ensureVercelProjectBuildSettings(token, project.id, teamId)
+  await disableVercelDeploymentProtection(token, project.id, teamId)
+
+  const gitLinked = Boolean(project.link?.type)
+  const deploymentUrl = `https://${project.name}.vercel.app`
+  const updated = updateOnboardingSession(session, {
+    status: 'VERCEL_CONNECTED',
+    tokens: { vercelToken: token },
+    vercel: {
+      teamId,
+      projectId: project.id,
+      projectName: project.name,
+      deploymentUrl,
+      gitLinked,
+    },
+  })
+
+  return json(res, 200, {
+    success: true,
+    session: updated,
+    sessionToken: sealOnboardingSession(updated),
+    gitLinked,
+    deploymentUrl,
+    message: gitLinked
+      ? `기존 Vercel 프로젝트 ${project.name}에 연결했습니다. 새 프로젝트는 생성하지 않았습니다.`
+      : `기존 프로젝트 ${project.name}에 연결했습니다. GitHub 저장소 연결은 아래 「Git 다시 연결」로 완료해주세요.`,
+  })
+}
+
 async function handleVercelLink(req: any, res: any) {
   if (req.method !== 'POST') return json(res, 405, { error: '허용되지 않은 메서드입니다.' })
   const session = unsealOnboardingSession(getBearerToken(req))
@@ -701,6 +785,7 @@ export default async function handler(req: any, res: any) {
     if (path === 'github/connect') return handleGitHubConnect(req, res)
     if (path === 'vercel/teams') return handleVercelTeams(req, res)
     if (path === 'vercel/project') return handleVercelProject(req, res)
+    if (path === 'vercel/connect') return handleVercelConnect(req, res)
     if (path === 'vercel/link') return handleVercelLink(req, res)
     if (path === 'supabase/resources') return handleSupabaseResources(req, res)
     if (path === 'supabase/project') return handleSupabaseProject(req, res)

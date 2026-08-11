@@ -3,6 +3,7 @@ import { TokenGuidePanel } from '../components/onboarding/TokenGuidePanel'
 import {
   connectExistingGitHubRepo,
   connectExistingSupabase,
+  connectExistingVercelProject,
   connectGitHubRepo,
   connectVercelProject,
   createSupabaseProjectManaged,
@@ -80,12 +81,15 @@ const Onboarding = () => {
     visibility: 'private' as 'public' | 'private',
     existingRepoUrl: '',
   })
-  const [githubMode, setGithubMode] = useState<'create' | 'existing'>('create')
+  // 재방문 사용자가 실수로 저장소를 다시 만들지 않도록 기존 연결을 기본값으로 둡니다.
+  const [githubMode, setGithubMode] = useState<'create' | 'existing'>('existing')
   const [vercelForm, setVercelForm] = useState({
     vercelToken: '',
     teamId: '',
     projectName: '',
+    existingProject: '',
   })
+  const [vercelMode, setVercelMode] = useState<'create' | 'existing'>('existing')
   const [supabaseForm, setSupabaseForm] = useState({
     supabaseToken: '',
     organizationId: '',
@@ -243,6 +247,45 @@ const Onboarding = () => {
     })
   }
 
+  const handleConnectExistingVercel = async () => {
+    if (!session?.github?.repo) {
+      setError('먼저 1단계에서 기존 GitHub 저장소를 연결해주세요.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (!vercelForm.vercelToken.trim()) {
+      setError('Vercel 토큰을 입력해주세요.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (!vercelForm.existingProject.trim()) {
+      setError('기존 Vercel 프로젝트 이름 또는 Project ID를 입력해주세요.')
+      return
+    }
+
+    await withSubmit(async (token) => {
+      const result = await connectExistingVercelProject(token, {
+        vercelToken: vercelForm.vercelToken.trim(),
+        teamId: vercelForm.teamId || undefined,
+        projectIdOrName: vercelForm.existingProject.trim(),
+      })
+      persistSessionToken(result.sessionToken)
+      setSessionToken(result.sessionToken)
+      setSession(result.session)
+      setHint(result.message || '기존 Vercel 프로젝트에 연결했습니다.')
+      setError('')
+
+      if (!result.gitLinked) {
+        setVercelGitPending({
+          installUrl: 'https://github.com/apps/vercel/installations/new',
+        })
+      } else {
+        stopVercelRelinkPolling()
+        setVercelGitPending(null)
+      }
+    })
+  }
+
   const handleInstallVercelGitHubApp = () => {
     const url = vercelGitPending?.installUrl || 'https://github.com/apps/vercel/installations/new'
     window.open(url, 'vercel-github-app', 'popup=yes,width=1100,height=900')
@@ -277,6 +320,13 @@ const Onboarding = () => {
               setVercelForm((prev) => ({
                 ...prev,
                 projectName: prev.projectName || existing.session.repoName || existing.session.github?.repo || '',
+                existingProject:
+                  prev.existingProject ||
+                  existing.session.vercel?.projectName ||
+                  existing.session.repoName ||
+                  existing.session.github?.repo ||
+                  '',
+                teamId: prev.teamId || existing.session.vercel?.teamId || '',
               }))
             }
             if (existing.session.vercel?.projectId && !existing.session.vercel?.gitLinked) {
@@ -364,6 +414,7 @@ const Onboarding = () => {
       setVercelForm((prev) => ({
         ...prev,
         projectName: result.session.repoName || githubForm.repoName,
+        existingProject: prev.existingProject || result.session.repoName || githubForm.repoName,
       }))
       if (result.message) setHint(result.message)
     })
@@ -392,6 +443,8 @@ const Onboarding = () => {
       setVercelForm((prev) => ({
         ...prev,
         projectName: result.session.repoName || result.session.github?.repo || prev.projectName,
+        existingProject:
+          prev.existingProject || result.session.repoName || result.session.github?.repo || '',
       }))
       if (result.message) setHint(result.message)
     })
@@ -681,17 +734,36 @@ const Onboarding = () => {
                 <p className="text-xs text-gray-500">같은 이름이 이미 있으면 새로 만들지 않고 그 저장소에 연결합니다.</p>
               </>
             ) : (
-              <>
+              <div className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                <p className="text-sm font-medium text-indigo-900">기존 저장소 연결 방법</p>
+                <ol className="list-decimal space-y-1 pl-5 text-xs text-indigo-800">
+                  <li>
+                    위에 GitHub 토큰을 입력합니다. 기존 저장소 확인과 최신 템플릿 코드
+                    동기화에 <strong>repo 쓰기 권한</strong>이 필요합니다.
+                  </li>
+                  <li>
+                    아래에 저장소 주소(예: https://github.com/계정/my-school-studycheck)를
+                    붙여 넣습니다.
+                  </li>
+                  <li>「기존 저장소 연결」을 누르면 새 저장소를 만들지 않고 그대로 이어갑니다.</li>
+                </ol>
                 <input
                   value={githubForm.existingRepoUrl}
                   onChange={(e) => setGithubForm((prev) => ({ ...prev, existingRepoUrl: e.target.value }))}
                   placeholder="https://github.com/owner/repo 또는 owner/repo"
-                  className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                  className="w-full rounded-lg border-2 border-gray-300 bg-white px-3 py-2 focus:border-indigo-500 focus:outline-none"
                 />
-                <button type="button" onClick={handleConnectExistingGitHub} disabled={submitting || !githubForm.githubToken.trim()} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                {(!githubForm.githubToken.trim() || !githubForm.existingRepoUrl.trim()) && (
+                  <p className="text-xs text-amber-700">
+                    {!githubForm.githubToken.trim()
+                      ? '먼저 위 GitHub 토큰을 입력해주세요. 링크만으로는 저장소를 수정·동기화할 권한을 확인할 수 없습니다.'
+                      : '이제 기존 저장소 링크를 입력해주세요.'}
+                  </p>
+                )}
+                <button type="button" onClick={handleConnectExistingGitHub} disabled={submitting} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
                   {submitting ? '연결 중...' : '기존 저장소 연결'}
                 </button>
-              </>
+              </div>
             )}
           </section>
 
@@ -737,23 +809,85 @@ const Onboarding = () => {
                 </select>
               )}
             </div>
-            <input
-              value={vercelForm.projectName}
-              onChange={(e) => setVercelForm((prev) => ({ ...prev, projectName: e.target.value }))}
-              placeholder="Vercel 프로젝트 이름 (소문자/숫자/하이픈)"
-              className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
-            />
-            <p className="text-xs text-gray-500">
-              프로젝트 이름은 자동으로 소문자·하이픈 형식으로 정리됩니다. GitHub 저장소 연결에 Vercel GitHub 앱이 필요하면 설치 창이 자동으로 열립니다.
-            </p>
-            <button
-              type="button"
-              onClick={handleVercel}
-              disabled={submitting}
-              className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {submitting ? '생성 중... (최대 1분)' : 'Vercel 프로젝트 생성'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setVercelMode('existing')}
+                className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                  vercelMode === 'existing'
+                    ? 'bg-indigo-600 text-white'
+                    : 'border border-gray-300 bg-white text-gray-700'
+                }`}
+              >
+                기존 프로젝트 연결
+              </button>
+              <button
+                type="button"
+                onClick={() => setVercelMode('create')}
+                className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                  vercelMode === 'create'
+                    ? 'bg-indigo-600 text-white'
+                    : 'border border-gray-300 bg-white text-gray-700'
+                }`}
+              >
+                새 프로젝트 생성
+              </button>
+            </div>
+
+            {vercelMode === 'existing' ? (
+              <div className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                <p className="text-sm text-indigo-900">
+                  어제 만든 프로젝트가 있다면 새로 만들지 말고 프로젝트 이름을 입력하세요.
+                  Vercel 대시보드의 프로젝트 카드에 표시되는 이름입니다.
+                </p>
+                <input
+                  value={vercelForm.existingProject}
+                  onChange={(e) =>
+                    setVercelForm((prev) => ({ ...prev, existingProject: e.target.value }))
+                  }
+                  placeholder="예: my-school-studycheck (또는 prj_로 시작하는 Project ID)"
+                  className="w-full rounded-lg border-2 border-gray-300 bg-white px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                />
+                {(!vercelForm.vercelToken.trim() || !vercelForm.existingProject.trim()) && (
+                  <p className="text-xs text-amber-700">
+                    {!vercelForm.vercelToken.trim()
+                      ? '먼저 위 Vercel 토큰을 입력해주세요. 프로젝트 조회·환경변수 반영에는 계정 권한이 필요합니다.'
+                      : '이제 기존 Vercel 프로젝트 이름 또는 Project ID를 입력해주세요.'}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={handleConnectExistingVercel}
+                  disabled={submitting}
+                  className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {submitting ? '연결 확인 중...' : '기존 Vercel 프로젝트 연결'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  value={vercelForm.projectName}
+                  onChange={(e) =>
+                    setVercelForm((prev) => ({ ...prev, projectName: e.target.value }))
+                  }
+                  placeholder="새 Vercel 프로젝트 이름 (소문자/숫자/하이픈)"
+                  className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                />
+                <p className="text-xs text-gray-500">
+                  정말 새 프로젝트가 필요할 때만 사용하세요. 이름은 자동으로 소문자·하이픈
+                  형식으로 정리됩니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleVercel}
+                  disabled={submitting}
+                  className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {submitting ? '생성 중... (최대 1분)' : '새 Vercel 프로젝트 생성'}
+                </button>
+              </div>
+            )}
             {(!session?.github?.repo || !vercelForm.vercelToken.trim()) && (
               <p className="text-xs text-amber-700">
                 {!session?.github?.repo

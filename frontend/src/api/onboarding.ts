@@ -146,6 +146,25 @@ export async function connectVercelProject(
   return response.data
 }
 
+/** 새 프로젝트를 만들지 않고 기존 Vercel 프로젝트를 세션에 연결 */
+export async function connectExistingVercelProject(
+  sessionToken: string,
+  payload: {
+    vercelToken: string
+    teamId?: string
+    projectIdOrName: string
+  }
+) {
+  const response = await apiClient.post<
+    SessionResponse & {
+      gitLinked?: boolean
+      deploymentUrl?: string
+      message?: string
+    }
+  >('/onboarding/vercel/connect', payload, withSessionToken(sessionToken))
+  return response.data
+}
+
 /** Vercel GitHub 앱 설치 후 Git 저장소 재연결 */
 export async function relinkVercelGit(
   sessionToken: string,
