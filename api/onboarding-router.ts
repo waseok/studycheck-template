@@ -9,7 +9,7 @@ import {
   getGitHubRepo,
   getGitHubUser,
   parseGitHubRepoRef,
-} from '../../backend/src/utils/github'
+} from '../backend/src/utils/github'
 import {
   createVercelProject,
   ensureVercelProjectGitLinked,
@@ -18,35 +18,42 @@ import {
   sanitizeVercelProjectName,
   applyVercelEnvAndRedeploy,
   triggerVercelDeployment,
-} from '../../backend/src/utils/vercel'
+} from '../backend/src/utils/vercel'
 import {
   listSupabaseOrganizations,
   listSupabaseProjects,
   createSupabaseProject,
   inferSupabaseProjectUrl,
-} from '../../backend/src/utils/supabase'
+} from '../backend/src/utils/supabase'
 import {
   createOnboardingSession,
   sealOnboardingSession,
   unsealOnboardingSession,
   updateOnboardingSession,
-} from '../../backend/src/utils/onboardingSession'
+} from '../backend/src/utils/onboardingSession'
 import {
   ensureDefaultSettings,
   pushDatabaseSchema,
   testDatabaseConnection,
-} from '../../backend/src/utils/dbBootstrap'
-import { getBearerToken, json, readJsonBody } from '../_lib/http'
+} from '../backend/src/utils/dbBootstrap'
+import { getBearerToken, json, readJsonBody } from './_lib/http'
 
 const TEMPLATE_OWNER = 'waseok'
 const TEMPLATE_REPO = 'studycheck-template'
 
 function routePath(req: any): string {
+  // vercel.json rewrite: /api/onboarding/(.*) → /api/onboarding-router?path=$1
   const raw = req.query?.path
   if (Array.isArray(raw)) return raw.filter(Boolean).join('/')
-  if (typeof raw === 'string' && raw.trim()) return raw.replace(/^\/+|\/+$/g, '')
+  if (typeof raw === 'string' && raw.trim()) {
+    return decodeURIComponent(raw).replace(/^\/+|\/+$/g, '')
+  }
   const url = String(req.url || '')
-  const match = url.match(/\/api\/onboarding\/?([^?]*)/)
+  const fromQuery = url.match(/[?&]path=([^&]+)/)
+  if (fromQuery?.[1]) {
+    return decodeURIComponent(fromQuery[1]).replace(/^\/+|\/+$/g, '')
+  }
+  const match = url.match(/\/api\/onboarding(?:-router)?\/?([^?]*)/)
   return (match?.[1] || '').replace(/^\/+|\/+$/g, '')
 }
 
