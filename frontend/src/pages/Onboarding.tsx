@@ -19,6 +19,28 @@ const STORAGE_KEY = 'studycheck-onboarding-session'
 
 const STEPS = ['GitHub', 'Vercel', 'Supabase', '배포', '학교 설정']
 
+/** React child로 쓰기 안전한 문자열로 변환 (객체 렌더링 #31 방지) */
+function toErrorText(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (value && typeof value === 'object') {
+    const obj = value as { message?: unknown; error?: unknown; detail?: unknown; code?: unknown }
+    if (typeof obj.message === 'string' && obj.message.trim()) {
+      return typeof obj.code === 'string' || typeof obj.code === 'number'
+        ? `[${obj.code}] ${obj.message}`
+        : obj.message
+    }
+    if (typeof obj.error === 'string' && obj.error.trim()) return obj.error
+    if (typeof obj.detail === 'string' && obj.detail.trim()) return obj.detail
+    try {
+      return JSON.stringify(value)
+    } catch {
+      // ignore
+    }
+  }
+  return fallback
+}
+
 function generateJwtSecret(): string {
   const bytes = new Uint8Array(32)
   crypto.getRandomValues(bytes)
@@ -91,7 +113,13 @@ const Onboarding = () => {
           }
         }
       } catch (err: any) {
-        setError(err.response?.data?.error || '온보딩 설정을 불러오지 못했습니다.')
+        const data = err?.response?.data
+        setError(
+          toErrorText(
+            data?.error ?? data?.message ?? data,
+            err?.message || '온보딩 설정을 불러오지 못했습니다.'
+          )
+        )
       } finally {
         setLoading(false)
       }
@@ -131,10 +159,13 @@ const Onboarding = () => {
       const token = sessionToken || (await startSession())
       await task(token)
     } catch (err: any) {
-      const data = err.response?.data
-      const message = data?.error || err.message || '요청을 처리하지 못했습니다.'
-      const detail = typeof data?.detail === 'string' ? data.detail : ''
-      setError(detail ? `${message}\n${detail}` : message)
+      const data = err?.response?.data
+      const message = toErrorText(
+        data?.error ?? data?.message ?? data,
+        err?.message || '요청을 처리하지 못했습니다.'
+      )
+      const detail = toErrorText(data?.detail, '')
+      setError(detail && detail !== message ? `${message}\n${detail}` : message)
     } finally {
       setSubmitting(false)
     }
