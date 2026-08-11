@@ -16,7 +16,7 @@
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api"
+      "destination": "/api?__path=$1"
     },
     {
       "source": "/((?!api/).*)",

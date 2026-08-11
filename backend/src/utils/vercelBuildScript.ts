@@ -30,8 +30,9 @@ export function readTemplateApiIndex(): string {
 
 /**
  * 학교 사이트용 vercel.json
- * - 온보딩 라우터(api/onboarding-router.ts)는 학교 저장소에 없을 수 있음
- * - functions에 없는 파일을 적으면 Vercel 배포가 unmatched-function-pattern 으로 실패함
+ * - Express 는 api/index.ts 하나
+ * - /api/* 는 __path 로 원본 경로를 넘겨야 타임아웃이 안 남
+ * - onboarding-router 는 functions 에 넣지 않음 (파일 없으면 unmatched 오류)
  */
 export function readSchoolVercelJson(): string {
   return `${JSON.stringify(
@@ -46,7 +47,7 @@ export function readSchoolVercelJson(): string {
       rewrites: [
         {
           source: '/api/(.*)',
-          destination: '/api',
+          destination: '/api?__path=$1',
         },
         {
           source: '/((?!api/).*)',
