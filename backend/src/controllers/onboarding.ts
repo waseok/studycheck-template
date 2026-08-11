@@ -395,6 +395,9 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
           session.github.owner,
           session.github.repo
         )
+        if (!gh.id) {
+          throw new Error('GitHub 저장소 ID를 확인할 수 없습니다.')
+        }
         gitSource = {
           type: 'github',
           repoId: gh.id,

@@ -531,6 +531,9 @@ async function handleProvision(req: any, res: any) {
         session.github.owner,
         session.github.repo
       )
+      if (!gh.id) {
+        throw new Error('GitHub 저장소 ID를 확인할 수 없습니다.')
+      }
       gitSource = {
         type: 'github',
         repoId: gh.id,
