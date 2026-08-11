@@ -163,35 +163,49 @@ export const TOKEN_GUIDES: Record<TokenGuideId, TokenGuideContent> = {
   },
   'supabase-database': {
     title: 'Supabase Session pooler DATABASE_URL',
-    summary: '기존 프로젝트에 연결할 때 꼭 필요한 값입니다. Direct connection 이 아니라 Session pooler 를 선택하세요.',
-    openUrl: 'https://supabase.com/dashboard/project/_/settings/database',
-    openLabel: 'Supabase Database 설정 열기',
+    summary:
+      '앱이 Postgres에 연결할 주소입니다. 대시보드 상단 Connect에서 Session pooler(포트 5432) URI를 복사하세요. Direct / Transaction 은 쓰지 않습니다.',
+    openUrl: 'https://supabase.com/dashboard/project/_?showConnect=true&method=session',
+    openLabel: 'Supabase Connect 패널 열기',
     steps: [
-      'Supabase 대시보드에서 기존 프로젝트를 선택합니다.',
-      '좌측 Settings → Database 로 이동합니다.',
-      'Connection string 섹션에서 Type: URI 를 선택합니다.',
-      'Method에서 Session pooler 를 선택합니다. (Direct connection 사용 금지)',
-      '표시된 URI에서 [YOUR-PASSWORD] 를 실제 DB 비밀번호로 바꾼 뒤 복사합니다.',
+      'supabase.com/dashboard 에 로그인한 뒤, 연결할 프로젝트를 엽니다.',
+      '화면 상단(프로젝트 헤더)의 Connect 버튼을 클릭합니다. (좌측 Settings → Database 경로가 아닙니다.)',
+      'Connect 패널에서 Session pooler 를 선택합니다. (포트가 5432 이고 host에 pooler.supabase.com 이 들어가야 합니다.)',
+      'Direct connection / Transaction pooler(포트 6543) 는 선택하지 마세요.',
+      'Type이 URI 인 연결 문자열을 복사합니다.',
+      '문자열의 [YOUR-PASSWORD] 를 실제 DB 비밀번호로 바꾼 뒤 붙여넣습니다.',
       '비밀번호에 ! @ # 등 특수문자가 있으면 URL 인코딩(! → %21) 후 붙여넣습니다.',
     ],
     tips: [
-      'Project Ref는 https://[ref].supabase.co 의 [ref] 부분입니다. URL만 넣으면 자동으로 채워집니다.',
-      'Ref와 프로젝트 URL은 선택 값입니다. DATABASE_URL만 있어도 연결됩니다.',
+      'URI 예: postgresql://postgres.[ref]:비밀번호@aws-0-....pooler.supabase.com:5432/postgres',
+      'Project Ref는 https://[ref].supabase.co 의 [ref] 부분입니다. 프로젝트 URL을 넣으면 자동으로 채워집니다.',
+      'DB 비밀번호를 잊었다면 Connect 패널 또는 Project Settings → Database 에서 Reset database password 로 재설정할 수 있습니다.',
     ],
     mockScreenshot: (
-      <MockBrowserFrame url="supabase.com/dashboard/project/.../settings/database">
+      <MockBrowserFrame url="supabase.com/dashboard/project/... → Connect">
         <div className="space-y-3">
-          <p className="text-xs font-semibold text-gray-800">Settings → Database → Connection string</p>
-          <div className="flex flex-wrap gap-2 text-[11px]">
-            <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-600">URI</span>
-            <Highlight label="중요">
-              <span className="text-xs font-semibold text-indigo-900">Method: Session pooler</span>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-gray-800">프로젝트 헤더</p>
+            <Highlight label="여기">
+              <button type="button" className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white">
+                Connect
+              </button>
             </Highlight>
           </div>
-          <div className="rounded-md bg-gray-900 px-3 py-2 font-mono text-[10px] leading-relaxed text-green-300 break-all">
-            postgresql://postgres.[ref]:[YOUR-PASSWORD]@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+            <p className="text-[11px] font-semibold text-gray-700">Connect → Connection string</p>
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              <span className="rounded-full bg-white px-2 py-1 text-gray-500 line-through">Direct</span>
+              <Highlight label="선택">
+                <span className="text-xs font-semibold text-indigo-900">Session pooler · 5432</span>
+              </Highlight>
+              <span className="rounded-full bg-white px-2 py-1 text-gray-500 line-through">Transaction · 6543</span>
+            </div>
+            <div className="rounded-md bg-gray-900 px-3 py-2 font-mono text-[10px] leading-relaxed text-green-300 break-all">
+              postgresql://postgres.[ref]:[YOUR-PASSWORD]@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres
+            </div>
+            <p className="text-[11px] text-gray-500">[YOUR-PASSWORD]를 DB 비밀번호로 바꾸고, 특수문자는 URL 인코딩합니다.</p>
           </div>
-          <p className="text-[11px] text-gray-500">[YOUR-PASSWORD] 자리에 DB 비밀번호를 넣고, 특수문자는 URL 인코딩(! → %21) 합니다.</p>
         </div>
       </MockBrowserFrame>
     ),
