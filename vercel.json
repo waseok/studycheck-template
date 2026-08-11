@@ -7,12 +7,20 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/api/onboarding/(.*)",
+      "destination": "/api/onboarding-router?path=$1"
+    },
+    {
+      "source": "/api/onboarding",
+      "destination": "/api/onboarding-router"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ],
   "functions": {
-    "api/onboarding/[...path].ts": {
+    "api/onboarding-router.ts": {
       "maxDuration": 60,
       "includeFiles": "backend/prisma/**"
     },
