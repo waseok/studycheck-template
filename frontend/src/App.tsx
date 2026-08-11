@@ -1,8 +1,8 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
-import { getSetupStatus } from './api/settings'
 import { useSettings } from './contexts/SettingsContext'
+import apiClient from './api/client'
 
 const Login = lazy(() => import('./pages/Login'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
@@ -32,18 +32,39 @@ const SetupGate = ({ children }: { children: ReactNode }) => {
   const [backendError, setBackendError] = useState(false)
 
   useEffect(() => {
-    getSetupStatus()
-      .then((status) => {
+    let cancelled = false
+    const controller = new AbortController()
+    // API가 멈추면 60초 동안 「로딩 중」에 갇히지 않도록 빠르게 포기
+    const timeoutId = window.setTimeout(() => controller.abort(), 8000)
+
+    apiClient
+      .get('/settings/status', { signal: controller.signal, timeout: 8000 })
+      .then((response) => {
+        if (cancelled) return
+        const status = response.data as {
+          dbConnected?: boolean
+          setupCompleted?: boolean
+        }
         setBackendError(false)
-        setDbConnected(status.dbConnected)
-        setSetupCompleted(status.setupCompleted)
+        setDbConnected(Boolean(status.dbConnected))
+        setSetupCompleted(Boolean(status.setupCompleted))
       })
       .catch(() => {
+        if (cancelled) return
         setBackendError(true)
         setDbConnected(false)
         setSetupCompleted(settings.setupCompleted)
       })
-      .finally(() => setChecking(false))
+      .finally(() => {
+        window.clearTimeout(timeoutId)
+        if (!cancelled) setChecking(false)
+      })
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+      controller.abort()
+    }
   }, [settings.setupCompleted])
 
   if (checking || settingsLoading) {

@@ -30,7 +30,8 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
 
   const refreshSettings = async () => {
     try {
-      const data = await getPublicSettings()
+      // 부팅 시 설정 API가 멈추면 화면이 「로딩 중」에 장시간 갇히지 않게 한다
+      const data = await getPublicSettings({ timeoutMs: 8000 })
       setSettings(data)
       document.title = `${data.schoolName} 연수 관리`
     } catch {
