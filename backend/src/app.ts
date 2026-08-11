@@ -61,5 +61,10 @@ export function createApp() {
     res.json({ status: 'ok', message: '연수 관리 플랫폼 API', timestamp: new Date().toISOString() })
   })
 
+  // rewrite 경로 복원 실패 등으로 라우트 미매칭 시 응답 없이 멈추지 않게 함
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'API 경로를 찾을 수 없습니다.' })
+  })
+
   return app
 }
