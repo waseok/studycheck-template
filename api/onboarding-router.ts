@@ -501,7 +501,7 @@ async function handleProvision(req: any, res: any) {
 
   await pushDatabaseSchema(session.supabase.databaseUrl)
   await ensureDefaultSettings(session.supabase.databaseUrl, session.supabase.projectUrl || undefined)
-  await applyVercelEnvAndRedeploy({
+  const envResult = await applyVercelEnvAndRedeploy({
     token: session.tokens.vercelToken,
     projectId: session.vercel.projectId,
     teamId: session.vercel.teamId,
@@ -511,14 +511,52 @@ async function handleProvision(req: any, res: any) {
 
   let deploymentUrl = session.vercel.deploymentUrl
   try {
+    // 재배포가 안 됐으면(첫 배포 없음) Git 소스로 첫 배포를 반드시 트리거
+    let gitSource: {
+      type: 'github'
+      repoId: number
+      ref?: string
+      org?: string
+      repo?: string
+    } | undefined
+
+    if (
+      !envResult.redeployed &&
+      session.tokens.githubToken &&
+      session.github?.owner &&
+      session.github?.repo
+    ) {
+      const gh = await getGitHubRepo(
+        session.tokens.githubToken,
+        session.github.owner,
+        session.github.repo
+      )
+      gitSource = {
+        type: 'github',
+        repoId: gh.id,
+        ref: gh.defaultBranch || 'main',
+        org: session.github.owner,
+        repo: session.github.repo,
+      }
+    }
+
     const deployment = await triggerVercelDeployment({
       token: session.tokens.vercelToken,
       projectName: session.vercel.projectName,
+      projectId: session.vercel.projectId,
       teamId: session.vercel.teamId,
+      gitSource,
     })
     deploymentUrl = `https://${deployment.url}`
   } catch (error) {
     console.warn('Vercel deploy trigger warning:', error)
+    if (!envResult.redeployed) {
+      // 재배포도 첫 배포도 실패하면 사용자에게 원인 노출
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        `환경변수는 저장됐지만 첫 배포를 시작하지 못했습니다. Vercel Git 연결을 확인한 뒤 다시 시도해주세요. (${detail})`
+      )
+    }
     deploymentUrl = deploymentUrl || `https://${session.vercel.projectName}.vercel.app`
   }
 

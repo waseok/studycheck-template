@@ -494,17 +494,40 @@ export async function createVercelProject(options: {
 export async function triggerVercelDeployment(options: {
   token: string
   projectName: string
+  projectId?: string
   teamId?: string
+  /** 첫 배포에 필요. 없으면 프로젝트에 연결된 Git으로 배포 시도 */
+  gitSource?: {
+    type: 'github'
+    repoId: number
+    ref?: string
+    org?: string
+    repo?: string
+  }
 }): Promise<{ url: string }> {
+  const body: Record<string, unknown> = {
+    name: options.projectName,
+    target: 'production',
+  }
+  if (options.projectId) {
+    body.project = options.projectId
+  }
+  if (options.gitSource) {
+    body.gitSource = {
+      type: options.gitSource.type,
+      repoId: options.gitSource.repoId,
+      ref: options.gitSource.ref || 'main',
+      ...(options.gitSource.org ? { org: options.gitSource.org } : {}),
+      ...(options.gitSource.repo ? { repo: options.gitSource.repo } : {}),
+    }
+  }
+
   const response = await vercelFetch(
     options.token,
     '/v13/deployments',
     {
       method: 'POST',
-      body: JSON.stringify({
-        name: options.projectName,
-        target: 'production',
-      }),
+      body: JSON.stringify(body),
     },
     options.teamId
   )
@@ -567,12 +590,15 @@ export async function upsertVercelEnv(
   }
 }
 
-/** 최신 배포를 재배포하여 환경변수 적용 */
+/**
+ * 최신 배포를 재배포하여 환경변수 적용.
+ * 아직 배포가 한 번도 없으면 false를 반환합니다(에러 아님 — 이후 첫 배포 트리거용).
+ */
 export async function redeployVercelProject(
   token: string,
   projectId: string,
   teamId?: string
-): Promise<void> {
+): Promise<boolean> {
   const listRes = await vercelFetch(
     token,
     `/v6/deployments?projectId=${projectId}&limit=1`,
@@ -586,7 +612,8 @@ export async function redeployVercelProject(
   const listData = (await listRes.json()) as { deployments?: Array<{ uid: string }> }
   const deploymentId = listData.deployments?.[0]?.uid
   if (!deploymentId) {
-    throw new Error('재배포할 Vercel 배포를 찾을 수 없습니다.')
+    // 신규 프로젝트는 배포 이력이 없음 → 재배포 대신 첫 배포가 필요
+    return false
   }
 
   const redeployRes = await vercelFetch(
@@ -599,21 +626,23 @@ export async function redeployVercelProject(
     const err = await redeployRes.text()
     throw new Error(`Vercel 재배포 실패: ${err}`)
   }
+  return true
 }
 
-/** DATABASE_URL, JWT_SECRET을 Vercel에 등록 후 재배포 */
+/** DATABASE_URL, JWT_SECRET을 Vercel에 등록 후 가능하면 재배포 */
 export async function applyVercelEnvAndRedeploy(options: {
   token: string
   projectId: string
   teamId?: string
   databaseUrl: string
   jwtSecret: string
-}): Promise<void> {
+}): Promise<{ redeployed: boolean }> {
   const { token, projectId, teamId, databaseUrl, jwtSecret } = options
   await upsertVercelEnv(token, projectId, 'DATABASE_URL', databaseUrl, teamId)
   await upsertVercelEnv(token, projectId, 'JWT_SECRET', jwtSecret, teamId)
   await upsertVercelEnv(token, projectId, 'NODE_ENV', 'production', teamId)
-  await redeployVercelProject(token, projectId, teamId)
+  const redeployed = await redeployVercelProject(token, projectId, teamId)
+  return { redeployed }
 }
 
 export function getRuntimeVercelProjectId(): string | undefined {

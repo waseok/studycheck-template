@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import {
   createRepoFromTemplate,
   getGitHubOAuthConfig,
+  getGitHubRepo,
   getGitHubUser,
 } from '../utils/github'
 import {
@@ -365,7 +366,7 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
       session.supabase.databaseUrl,
       session.supabase.projectUrl || undefined
     )
-    await applyVercelEnvAndRedeploy({
+    const envResult = await applyVercelEnvAndRedeploy({
       token: session.tokens.vercelToken,
       projectId: session.vercel.projectId,
       teamId: session.vercel.teamId,
@@ -375,14 +376,50 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
 
     let deploymentUrl = session.vercel.deploymentUrl
     try {
+      let gitSource: {
+        type: 'github'
+        repoId: number
+        ref?: string
+        org?: string
+        repo?: string
+      } | undefined
+
+      if (
+        !envResult.redeployed &&
+        session.tokens.githubToken &&
+        session.github?.owner &&
+        session.github?.repo
+      ) {
+        const gh = await getGitHubRepo(
+          session.tokens.githubToken,
+          session.github.owner,
+          session.github.repo
+        )
+        gitSource = {
+          type: 'github',
+          repoId: gh.id,
+          ref: gh.defaultBranch || 'main',
+          org: session.github.owner,
+          repo: session.github.repo,
+        }
+      }
+
       const deployment = await triggerVercelDeployment({
         token: session.tokens.vercelToken,
         projectName: session.vercel.projectName,
+        projectId: session.vercel.projectId,
         teamId: session.vercel.teamId,
+        gitSource,
       })
       deploymentUrl = `https://${deployment.url}`
     } catch (error) {
       console.warn('Vercel deploy trigger warning:', error)
+      if (!envResult.redeployed) {
+        const detail = error instanceof Error ? error.message : String(error)
+        throw new Error(
+          `환경변수는 저장됐지만 첫 배포를 시작하지 못했습니다. Vercel Git 연결을 확인한 뒤 다시 시도해주세요. (${detail})`
+        )
+      }
       deploymentUrl = deploymentUrl || `https://${session.vercel.projectName}.vercel.app`
     }
 

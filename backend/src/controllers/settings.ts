@@ -113,14 +113,14 @@ export const bootstrapInfra = async (req: Request, res: Response) => {
 
     if (token && projectId) {
       try {
-        await applyVercelEnvAndRedeploy({
+        const result = await applyVercelEnvAndRedeploy({
           token,
           projectId,
           teamId,
           databaseUrl: trimmedUrl,
           jwtSecret,
         })
-        redeployTriggered = true
+        redeployTriggered = result.redeployed
         vercelEnvApplied = true
       } catch (error) {
         console.error('Vercel env apply error:', error)
