@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TokenGuidePanel } from '../components/onboarding/TokenGuidePanel'
 import {
@@ -13,6 +13,7 @@ import {
   getVercelTeams,
   OnboardingSession,
   provisionOnboardingInfrastructure,
+  relinkVercelGit,
   startOnboardingSession,
 } from '../api/onboarding'
 
@@ -95,6 +96,158 @@ const Onboarding = () => {
   })
   const [vercelTeams, setVercelTeams] = useState<Array<{ id: string; slug: string; name: string }>>([])
   const [supabaseOrganizations, setSupabaseOrganizations] = useState<Array<{ id: string; name: string }>>([])
+  const [vercelGitPending, setVercelGitPending] = useState<{ installUrl: string } | null>(null)
+  const [vercelGitRetrying, setVercelGitRetrying] = useState(false)
+  const vercelRelinkPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const vercelRelinkBusyRef = useRef(false)
+  const vercelFocusHandlerRef = useRef<(() => void) | null>(null)
+
+  const stopVercelRelinkPolling = () => {
+    if (vercelRelinkPollRef.current) {
+      clearInterval(vercelRelinkPollRef.current)
+      vercelRelinkPollRef.current = null
+    }
+    if (vercelFocusHandlerRef.current) {
+      window.removeEventListener('focus', vercelFocusHandlerRef.current)
+      vercelFocusHandlerRef.current = null
+    }
+  }
+
+  const tryRelinkVercelGit = async (opts?: { silent?: boolean }) => {
+    const token = sessionToken || loadSessionToken()
+    if (!token || vercelRelinkBusyRef.current) return false
+    if (!vercelForm.vercelToken.trim() && !session?.vercel?.projectId) return false
+
+    vercelRelinkBusyRef.current = true
+    if (!opts?.silent) setVercelGitRetrying(true)
+    try {
+      const result = await relinkVercelGit(token, {
+        vercelToken: vercelForm.vercelToken.trim() || undefined,
+        teamId: vercelForm.teamId || undefined,
+        projectName: vercelForm.projectName || undefined,
+      })
+      persistSessionToken(result.sessionToken)
+      setSessionToken(result.sessionToken)
+      setSession(result.session)
+
+      if (result.gitLinked) {
+        stopVercelRelinkPolling()
+        setVercelGitPending(null)
+        setHint(result.message || 'GitHub 저장소가 Vercel에 연결되었습니다.')
+        setError('')
+        return true
+      }
+
+      if (result.installUrl) {
+        setVercelGitPending({ installUrl: result.installUrl })
+      }
+      if (!opts?.silent) {
+        setHint(
+          result.message ||
+            result.hint ||
+            '아직 GitHub 앱 설치가 반영되지 않았습니다. 잠시 후 다시 시도합니다.'
+        )
+      }
+      return false
+    } catch (err) {
+      if (!opts?.silent) {
+        setError(toErrorText(err, 'Git 재연결에 실패했습니다.'))
+      }
+      return false
+    } finally {
+      vercelRelinkBusyRef.current = false
+      if (!opts?.silent) setVercelGitRetrying(false)
+    }
+  }
+
+  const startVercelRelinkPolling = (installUrl: string) => {
+    setVercelGitPending({ installUrl })
+    stopVercelRelinkPolling()
+
+    const onFocus = () => {
+      void tryRelinkVercelGit({ silent: true })
+    }
+    vercelFocusHandlerRef.current = onFocus
+    window.addEventListener('focus', onFocus)
+
+    let attempts = 0
+    vercelRelinkPollRef.current = setInterval(() => {
+      attempts += 1
+      if (attempts > 40) {
+        stopVercelRelinkPolling()
+        setHint('GitHub 앱 설치 대기 시간이 지났습니다. 「Git 다시 연결」을 눌러 재시도해주세요.')
+        return
+      }
+      void tryRelinkVercelGit({ silent: true })
+    }, 3000)
+  }
+
+  useEffect(() => {
+    return () => {
+      stopVercelRelinkPolling()
+    }
+  }, [])
+
+  const handleLoadVercelTeams = async () => {
+    await withSubmit(async (token) => {
+      const result = await getVercelTeams(token, vercelForm.vercelToken.trim())
+      persistSessionToken(result.sessionToken)
+      setSession(result.session)
+      setVercelTeams(result.teams)
+    })
+  }
+
+  const handleVercel = async () => {
+    if (!session?.github?.repo) {
+      setError('먼저 1단계 GitHub 저장소 생성을 완료해주세요.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (!vercelForm.vercelToken.trim()) {
+      setError('Vercel 토큰을 입력해주세요.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    await withSubmit(async (token) => {
+      const result = await connectVercelProject(token, {
+        vercelToken: vercelForm.vercelToken.trim(),
+        teamId: vercelForm.teamId || undefined,
+        projectName: vercelForm.projectName || undefined,
+      })
+      persistSessionToken(result.sessionToken)
+      setSessionToken(result.sessionToken)
+      setSession(result.session)
+
+      if (result.gitLinked) {
+        stopVercelRelinkPolling()
+        setVercelGitPending(null)
+        setHint(result.message || 'Vercel 프로젝트와 GitHub 저장소가 연결되었습니다.')
+        return
+      }
+
+      const installUrl = result.installUrl || 'https://github.com/apps/vercel/installations/new'
+      setHint(
+        result.hint ||
+          result.message ||
+          'Vercel GitHub 앱 설치가 필요합니다. 설치 창을 연 뒤 자동으로 다시 연결합니다.'
+      )
+      window.open(installUrl, 'vercel-github-app', 'popup=yes,width=1100,height=900')
+      startVercelRelinkPolling(installUrl)
+    })
+  }
+
+  const handleInstallVercelGitHubApp = () => {
+    const url = vercelGitPending?.installUrl || 'https://github.com/apps/vercel/installations/new'
+    window.open(url, 'vercel-github-app', 'popup=yes,width=1100,height=900')
+    startVercelRelinkPolling(url)
+    setHint('설치가 끝나면 이 창으로 돌아와 주세요. 자동으로 Git 연결을 다시 시도합니다.')
+  }
+
+  const handleRelinkVercelGit = async () => {
+    setError('')
+    await tryRelinkVercelGit()
+  }
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -119,6 +272,10 @@ const Onboarding = () => {
                 ...prev,
                 projectName: prev.projectName || existing.session.repoName || existing.session.github?.repo || '',
               }))
+            }
+            if (existing.session.vercel?.projectId && !existing.session.vercel?.gitLinked) {
+              const installUrl = 'https://github.com/apps/vercel/installations/new'
+              setVercelGitPending({ installUrl })
             }
           } catch {
             localStorage.removeItem(STORAGE_KEY)
@@ -237,42 +394,6 @@ const Onboarding = () => {
     setHint(`1단계 완료 상태입니다. 아래 2단계 Vercel로 진행하세요. (${session.github.owner}/${session.github.repo})`)
     const el = document.getElementById('onboarding-step-vercel')
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  const handleLoadVercelTeams = async () => {
-    await withSubmit(async (token) => {
-      const result = await getVercelTeams(token, vercelForm.vercelToken.trim())
-      persistSessionToken(result.sessionToken)
-      setSession(result.session)
-      setVercelTeams(result.teams)
-    })
-  }
-
-  const handleVercel = async () => {
-    if (!session?.github?.repo) {
-      setError('먼저 1단계 GitHub 저장소 생성을 완료해주세요.')
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-      return
-    }
-    if (!vercelForm.vercelToken.trim()) {
-      setError('Vercel 토큰을 입력해주세요.')
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-      return
-    }
-
-    await withSubmit(async (token) => {
-      const result = await connectVercelProject(token, {
-        vercelToken: vercelForm.vercelToken.trim(),
-        teamId: vercelForm.teamId || undefined,
-        projectName: vercelForm.projectName || undefined,
-      })
-      persistSessionToken(result.sessionToken)
-      setSessionToken(result.sessionToken)
-      setSession(result.session)
-      if (result.hint || result.message) {
-        setHint(result.hint || result.message || '')
-      }
-    })
   }
 
   const handleLoadSupabaseResources = async () => {
@@ -524,7 +645,7 @@ const Onboarding = () => {
               className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
             />
             <p className="text-xs text-gray-500">
-              프로젝트 이름은 자동으로 소문자·하이픈 형식으로 정리됩니다. Vercel 계정에 GitHub가 연결되어 있어야 저장소가 붙습니다.
+              프로젝트 이름은 자동으로 소문자·하이픈 형식으로 정리됩니다. GitHub 저장소 연결에 Vercel GitHub 앱이 필요하면 설치 창이 자동으로 열립니다.
             </p>
             <button
               type="button"
@@ -542,9 +663,38 @@ const Onboarding = () => {
               </p>
             )}
             {session?.vercel?.projectId && (
-              <p className="text-sm text-green-700">
-                ✓ Vercel 프로젝트 연결 완료: {session.vercel.projectName}
-              </p>
+              <div className="space-y-2">
+                <p className={`text-sm ${session.vercel.gitLinked ? 'text-green-700' : 'text-amber-700'}`}>
+                  {session.vercel.gitLinked
+                    ? `✓ Vercel + GitHub 연결 완료: ${session.vercel.projectName}`
+                    : `△ Vercel 프로젝트는 생성됨 (${session.vercel.projectName}) — GitHub 연결 대기 중`}
+                </p>
+                {(vercelGitPending || (session.vercel.projectId && !session.vercel.gitLinked)) && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 space-y-2">
+                    <p className="text-sm text-amber-900">
+                      Vercel이 저장소를 보려면 <strong>해당 GitHub 계정/조직</strong>에 Vercel 앱이 설치되어야 합니다.
+                      설치 후 이 페이지가 자동으로 다시 연결을 시도합니다.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleInstallVercelGitHubApp}
+                        className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-800"
+                      >
+                        Vercel GitHub 앱 설치
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRelinkVercelGit}
+                        disabled={submitting || vercelGitRetrying}
+                        className="px-4 py-2 rounded-lg border border-amber-400 bg-white text-sm text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        {vercelGitRetrying ? '연결 재시도 중...' : 'Git 다시 연결'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </section>
 

@@ -4,11 +4,13 @@ interface GitHubUser {
   avatar_url: string
 }
 
-interface GitHubCreateRepoResult {
+export interface GitHubCreateRepoResult {
   owner: string
   repo: string
   repoUrl: string
   visibility: 'public' | 'private'
+  id?: number
+  defaultBranch?: string
 }
 
 const GITHUB_API = 'https://api.github.com'
@@ -78,17 +80,21 @@ export async function getGitHubRepo(
   repo: string
 ): Promise<GitHubCreateRepoResult> {
   const result = await githubFetch<{
+    id: number
     owner: { login: string }
     name: string
     html_url: string
     private: boolean
+    default_branch?: string
   }>(token, `/repos/${owner}/${repo}`)
 
   return {
+    id: result.id,
     owner: result.owner.login,
     repo: result.name,
     repoUrl: result.html_url,
     visibility: result.private ? 'private' : 'public',
+    defaultBranch: result.default_branch || 'main',
   }
 }
 

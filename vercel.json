@@ -21,6 +21,9 @@
     "api/onboarding/vercel/project.ts": {
       "maxDuration": 60
     },
+    "api/onboarding/vercel/link.ts": {
+      "maxDuration": 60
+    },
     "api/onboarding/vercel/teams.ts": {
       "maxDuration": 30
     },

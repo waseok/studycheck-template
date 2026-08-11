@@ -1,4 +1,4 @@
-import { createVercelProject, sanitizeVercelProjectName } from '../../../backend/src/utils/vercel'
+import { ensureVercelProjectGitLinked, sanitizeVercelProjectName } from '../../../backend/src/utils/vercel'
 import { getGitHubUser, parseGitHubRepoRef } from '../../../backend/src/utils/github'
 import {
   sealOnboardingSession,
@@ -10,22 +10,20 @@ import { getBearerToken, json, readJsonBody } from '../../_lib/http'
 function resolveRepoSlug(session: {
   github?: { owner?: string; repo?: string; repoUrl?: string }
   repoName?: string
-  tokens?: { githubToken?: string }
 }): { owner: string; repo: string } | null {
   if (session.github?.owner && session.github?.repo) {
     return { owner: session.github.owner, repo: session.github.repo }
   }
   if (session.github?.repoUrl) {
-    const parsed = parseGitHubRepoRef(session.github.repoUrl)
-    if (parsed) return parsed
-  }
-  if (session.github?.repo?.includes('/')) {
-    const parsed = parseGitHubRepoRef(session.github.repo)
-    if (parsed) return parsed
+    return parseGitHubRepoRef(session.github.repoUrl)
   }
   return null
 }
 
+/**
+ * Vercel GitHub 앱 설치 후 Git 재연결.
+ * 미연결 프로젝트를 삭제하고 gitRepository 포함 재생성합니다.
+ */
 export default async function handler(req: any, res: any) {
   try {
     if (req.method !== 'POST') {
@@ -44,8 +42,6 @@ export default async function handler(req: any, res: any) {
     }
 
     let repoRef = resolveRepoSlug(session)
-
-    // owner가 비어 있으면 GitHub 토큰으로 보정
     if (!repoRef && session.tokens.githubToken && (session.github?.repo || session.repoName)) {
       const user = await getGitHubUser(session.tokens.githubToken)
       repoRef = {
@@ -56,21 +52,23 @@ export default async function handler(req: any, res: any) {
 
     if (!repoRef?.owner || !repoRef.repo) {
       return json(res, 400, {
-        error: 'GitHub 저장소 정보(owner/repo)가 없습니다. 1단계를 다시 연결해주세요.',
+        error: 'GitHub 저장소 정보가 없습니다. 1단계를 다시 연결해주세요.',
       })
     }
 
     const repoSlug = `${repoRef.owner}/${repoRef.repo}`
     const projectName = sanitizeVercelProjectName(
-      String(body.projectName || session.repoName || repoRef.repo).trim()
+      String(body.projectName || session.vercel?.projectName || session.repoName || repoRef.repo).trim()
     )
+    const teamId = body.teamId?.trim() || session.vercel?.teamId || undefined
 
-    const created = await createVercelProject({
+    const linked = await ensureVercelProjectGitLinked({
       token,
       githubToken: session.tokens.githubToken,
-      teamId: body.teamId?.trim() || undefined,
       projectName,
+      projectId: session.vercel?.projectId,
       repo: repoSlug,
+      teamId,
     })
 
     const updated = updateOnboardingSession(session, {
@@ -83,11 +81,11 @@ export default async function handler(req: any, res: any) {
         visibility: session.github?.visibility,
       },
       vercel: {
-        teamId: body.teamId?.trim() || undefined,
-        projectId: created.id,
-        projectName: created.name,
-        deploymentUrl: created.deploymentUrl || session.vercel?.deploymentUrl,
-        gitLinked: created.gitLinked,
+        teamId,
+        projectId: linked.id,
+        projectName: linked.name,
+        deploymentUrl: linked.deploymentUrl || session.vercel?.deploymentUrl,
+        gitLinked: linked.gitLinked,
       },
     })
 
@@ -95,21 +93,20 @@ export default async function handler(req: any, res: any) {
       success: true,
       session: updated,
       sessionToken: sealOnboardingSession(updated),
-      gitLinked: created.gitLinked,
-      needsGitHubApp: created.needsGitHubApp || false,
-      installUrl: created.installUrl,
-      message: created.warning || `Vercel 프로젝트 연결 완료 (${repoSlug})`,
-      hint: created.warning,
+      gitLinked: linked.gitLinked,
+      needsGitHubApp: linked.needsGitHubApp || false,
+      installUrl: linked.installUrl,
+      message: linked.gitLinked
+        ? `GitHub 저장소 연결 완료 (${repoSlug})`
+        : linked.warning || '아직 GitHub 앱 설치가 완료되지 않은 것 같습니다. 설치 후 잠시 뒤 다시 시도됩니다.',
+      hint: linked.warning,
     })
   } catch (error) {
-    console.error('onboarding/vercel/project error:', error)
+    console.error('onboarding/vercel/link error:', error)
     const detail = error instanceof Error ? error.message : String(error)
-    const hint = /github|gitRepository|repository|repo_not_found/i.test(detail)
-      ? ' Vercel GitHub 앱이 해당 계정/조직에 설치되어 있는지 확인한 뒤 다시 시도하세요.'
-      : ''
     return json(res, 500, {
-      error: 'Vercel 프로젝트 생성에 실패했습니다.',
-      detail: `${detail}${hint}`,
+      error: 'GitHub 저장소 재연결에 실패했습니다.',
+      detail,
     })
   }
 }

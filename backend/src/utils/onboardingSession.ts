@@ -18,6 +18,8 @@ export interface VercelState {
   projectId?: string
   projectName?: string
   deploymentUrl?: string
+  /** GitHub 저장소가 Vercel 프로젝트에 연결됐는지 */
+  gitLinked?: boolean
 }
 
 export interface SupabaseState {

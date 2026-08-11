@@ -32,6 +32,7 @@ export interface OnboardingSession {
     projectId?: string
     projectName?: string
     deploymentUrl?: string
+    gitLinked?: boolean
   }
   supabase?: {
     organizationId?: string
@@ -134,8 +135,31 @@ export async function connectVercelProject(
   payload: { vercelToken: string; teamId?: string; projectName?: string }
 ) {
   const response = await apiClient.post<
-    SessionResponse & { gitLinked?: boolean; hint?: string; message?: string }
+    SessionResponse & {
+      gitLinked?: boolean
+      needsGitHubApp?: boolean
+      installUrl?: string
+      hint?: string
+      message?: string
+    }
   >('/onboarding/vercel/project', payload, withSessionToken(sessionToken))
+  return response.data
+}
+
+/** Vercel GitHub 앱 설치 후 Git 저장소 재연결 */
+export async function relinkVercelGit(
+  sessionToken: string,
+  payload: { vercelToken?: string; teamId?: string; projectName?: string } = {}
+) {
+  const response = await apiClient.post<
+    SessionResponse & {
+      gitLinked?: boolean
+      needsGitHubApp?: boolean
+      installUrl?: string
+      hint?: string
+      message?: string
+    }
+  >('/onboarding/vercel/link', payload, withSessionToken(sessionToken))
   return response.data
 }
 

@@ -1,4 +1,7 @@
+import { getGitHubRepo } from './github'
+
 const VERCEL_API = 'https://api.vercel.com'
+const DEFAULT_GITHUB_APP_INSTALL = 'https://github.com/apps/vercel/installations/new'
 
 interface VercelTeam {
   id: string
@@ -10,6 +13,16 @@ interface VercelUser {
   id: string
   username: string
   email: string
+}
+
+export type VercelProjectCreateResult = {
+  id: string
+  name: string
+  gitLinked: boolean
+  warning?: string
+  needsGitHubApp?: boolean
+  installUrl?: string
+  deploymentUrl?: string
 }
 
 async function vercelFetch(
@@ -35,6 +48,69 @@ async function parseVercelJson<T>(response: Response, fallbackMessage: string): 
     throw new Error(`${fallbackMessage}: ${text}`)
   }
   return response.json() as Promise<T>
+}
+
+function parseVercelErrorBody(text: string): {
+  code?: string
+  message?: string
+  link?: string
+  repo?: string
+  action?: string
+} {
+  try {
+    const parsed = JSON.parse(text) as { error?: Record<string, string> } & Record<string, string>
+    const err = parsed.error || parsed
+    return {
+      code: err.code,
+      message: err.message,
+      link: err.link,
+      repo: err.repo,
+      action: err.action,
+    }
+  } catch {
+    return { message: text }
+  }
+}
+
+function isGitAppError(err: { code?: string; message?: string; action?: string }): boolean {
+  const hay = `${err.code || ''} ${err.message || ''} ${err.action || ''}`
+  return /repo_not_found|install the GitHub|GitHub integration|Install GitHub App|not found/i.test(hay)
+}
+
+function buildInstallUrl(owner: string, errorLink?: string): string {
+  if (errorLink && /github\.com\/apps\/vercel/i.test(errorLink)) {
+    // 에러에 온 링크가 /apps/vercel 만이면 installations/new 로 보정
+    if (/\/apps\/vercel\/?$/i.test(errorLink)) {
+      return `${errorLink.replace(/\/$/, '')}/installations/new`
+    }
+    return errorLink
+  }
+  // 조직/사용자 대상 설치 화면 (target_id 는 relink 시 owner 조회로 보강 가능)
+  if (owner) {
+    return `${DEFAULT_GITHUB_APP_INSTALL}?suggested_target_id=0&owner=${encodeURIComponent(owner)}`
+  }
+  return DEFAULT_GITHUB_APP_INSTALL
+}
+
+async function resolveOwnerInstallUrl(owner: string, githubToken?: string, errorLink?: string): Promise<string> {
+  if (githubToken && owner) {
+    try {
+      const res = await fetch(`https://api.github.com/users/${owner}`, {
+        headers: {
+          Authorization: `Bearer ${githubToken}`,
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'studycheck-template-onboarding',
+        },
+      })
+      if (res.ok) {
+        const user = (await res.json()) as { id: number }
+        return `https://github.com/apps/vercel/installations/new/permissions?target_id=${user.id}`
+      }
+    } catch {
+      // fallback
+    }
+  }
+  return buildInstallUrl(owner, errorLink)
 }
 
 /** Vercel 프로젝트명 규칙: 소문자/숫자/하이픈만 */
@@ -64,25 +140,118 @@ export async function listVercelTeams(token: string): Promise<VercelTeam[]> {
   return result.teams || []
 }
 
-export async function createVercelProject(options: {
-  token: string
-  projectName: string
+function parseRepoSlug(options: {
   repo: string
+  owner?: string
+  repoName?: string
+}): { owner: string; repo: string } {
+  const parsed = options.repo.includes('/')
+    ? {
+        owner: options.repo.split('/')[0],
+        repo: options.repo.split('/').slice(1).join('/'),
+      }
+    : {
+        owner: options.owner || '',
+        repo: options.repoName || options.repo,
+      }
+  if (!parsed.owner || !parsed.repo) {
+    throw new Error('GitHub owner/repo 정보가 올바르지 않습니다.')
+  }
+  return parsed
+}
+
+export async function deleteVercelProject(
+  token: string,
+  idOrName: string,
+  teamId?: string
+): Promise<void> {
+  const response = await vercelFetch(
+    token,
+    `/v9/projects/${encodeURIComponent(idOrName)}`,
+    { method: 'DELETE' },
+    teamId
+  )
+  // 이미 없어도 재연결 흐름에서는 무시
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text()
+    throw new Error(`Vercel 프로젝트 삭제 실패: ${text}`)
+  }
+}
+
+async function tryCreateWithGit(options: {
+  token: string
+  name: string
+  slug: string
   repoId?: number
   teamId?: string
-}): Promise<{ id: string; name: string; gitLinked: boolean; warning?: string }> {
-  const name = sanitizeVercelProjectName(options.projectName)
+}): Promise<{ ok: true; id: string; name: string } | { ok: false; errors: string[]; installLink?: string }> {
+  const gitAttempts: Array<Record<string, unknown>> = [
+    { type: 'github', repo: options.slug, sourceless: true },
+    { type: 'github', repo: options.slug },
+  ]
+  if (options.repoId) {
+    gitAttempts.unshift({
+      type: 'github',
+      repo: options.slug,
+      repoId: options.repoId,
+      sourceless: true,
+    })
+  }
 
-  // 1) GitHub 저장소까지 한번에 연결 시도
-  const withGit = await vercelFetch(
+  const errors: string[] = []
+  let installLink: string | undefined
+
+  for (const gitRepository of gitAttempts) {
+    const response = await vercelFetch(
+      options.token,
+      '/v11/projects',
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: options.name, gitRepository }),
+      },
+      options.teamId
+    )
+    if (response.ok) {
+      const created = (await response.json()) as { id: string; name: string }
+      return { ok: true, id: created.id, name: created.name }
+    }
+    const text = await response.text()
+    errors.push(text)
+    const parsed = parseVercelErrorBody(text)
+    if (parsed.link) installLink = parsed.link
+    // 이름 충돌이면 더 이상 git create 시도해도 동일 — 상위에서 삭제 후 재시도
+    if (parsed.code === 'conflict' || /already exists/i.test(parsed.message || text)) {
+      break
+    }
+  }
+
+  return { ok: false, errors, installLink }
+}
+
+async function tryDeployFromGit(options: {
+  token: string
+  projectId: string
+  projectName: string
+  owner: string
+  repo: string
+  repoId: number
+  defaultBranch: string
+  teamId?: string
+}): Promise<{ ok: true; url?: string } | { ok: false; error: string }> {
+  const deployRes = await vercelFetch(
     options.token,
-    '/v11/projects',
+    '/v13/deployments',
     {
       method: 'POST',
       body: JSON.stringify({
-        name,
-        gitRepository: {
+        name: options.projectName,
+        project: options.projectId,
+        target: 'production',
+        gitSource: {
           type: 'github',
+          repoId: options.repoId,
+          ref: options.defaultBranch,
+          org: options.owner,
           repo: options.repo,
         },
       }),
@@ -90,40 +259,235 @@ export async function createVercelProject(options: {
     options.teamId
   )
 
-  if (withGit.ok) {
-    const created = (await withGit.json()) as { id: string; name: string }
-    return { id: created.id, name: created.name, gitLinked: true }
+  if (deployRes.ok) {
+    const deployment = (await deployRes.json()) as { url?: string }
+    return {
+      ok: true,
+      url: deployment.url ? `https://${deployment.url}` : undefined,
+    }
   }
+  return { ok: false, error: await deployRes.text() }
+}
 
-  const gitError = await withGit.text()
-
-  // 2) Git 연결 실패 시(통합 미설치 등) 빈 프로젝트라도 생성
-  const withoutGit = await vercelFetch(
+async function getOrCreateBareProject(options: {
+  token: string
+  name: string
+  teamId?: string
+}): Promise<{ id: string; name: string }> {
+  const createRes = await vercelFetch(
     options.token,
     '/v11/projects',
     {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name: options.name }),
     },
     options.teamId
   )
 
-  if (!withoutGit.ok) {
-    const text = await withoutGit.text()
-    throw new Error(
-      `Vercel 프로젝트 생성 실패: ${text} (GitHub 연결 시도 오류: ${gitError}). ` +
-        'Vercel 대시보드에서 GitHub 계정을 연결(Import Git Repository)한 뒤 다시 시도하세요.'
-    )
+  if (createRes.ok) {
+    return (await createRes.json()) as { id: string; name: string }
   }
 
-  const created = (await withoutGit.json()) as { id: string; name: string }
+  const text = await createRes.text()
+  const err = parseVercelErrorBody(text)
+  if (err.code === 'conflict' || /already exists/i.test(err.message || text)) {
+    const getRes = await vercelFetch(
+      options.token,
+      `/v9/projects/${encodeURIComponent(options.name)}`,
+      undefined,
+      options.teamId
+    )
+    if (getRes.ok) {
+      return (await getRes.json()) as { id: string; name: string }
+    }
+  }
+
+  throw new Error(`Vercel 프로젝트 생성 실패: ${text}`)
+}
+
+/**
+ * 앱 설치 후 재연결: Git 미연결 프로젝트를 삭제하고 GitRepository 포함해 재생성합니다.
+ */
+export async function ensureVercelProjectGitLinked(options: {
+  token: string
+  githubToken?: string
+  projectName: string
+  projectId?: string
+  repo: string
+  owner?: string
+  repoName?: string
+  teamId?: string
+}): Promise<VercelProjectCreateResult> {
+  const name = sanitizeVercelProjectName(options.projectName)
+  const parsed = parseRepoSlug(options)
+  const slug = `${parsed.owner}/${parsed.repo}`
+
+  let repoId: number | undefined
+  let defaultBranch = 'main'
+  if (options.githubToken) {
+    try {
+      const gh = await getGitHubRepo(options.githubToken, parsed.owner, parsed.repo)
+      repoId = gh.id
+      defaultBranch = gh.defaultBranch || 'main'
+    } catch {
+      // 계속 진행
+    }
+  }
+
+  // 1) 기존 프로젝트에 gitSource 배포로 연결 시도
+  if (options.projectId && repoId) {
+    const deployed = await tryDeployFromGit({
+      token: options.token,
+      projectId: options.projectId,
+      projectName: name,
+      owner: parsed.owner,
+      repo: parsed.repo,
+      repoId,
+      defaultBranch,
+      teamId: options.teamId,
+    })
+    if (deployed.ok) {
+      return {
+        id: options.projectId,
+        name,
+        gitLinked: true,
+        deploymentUrl: deployed.url,
+      }
+    }
+  }
+
+  // 2) 미연결 프로젝트 삭제 후 Git 포함 재생성
+  if (options.projectId) {
+    try {
+      await deleteVercelProject(options.token, options.projectId, options.teamId)
+    } catch {
+      try {
+        await deleteVercelProject(options.token, name, options.teamId)
+      } catch {
+        // 이름 충돌이면 create 시 다시 처리
+      }
+    }
+  } else {
+    try {
+      await deleteVercelProject(options.token, name, options.teamId)
+    } catch {
+      // ignore
+    }
+  }
+
+  return createVercelProject({
+    token: options.token,
+    githubToken: options.githubToken,
+    projectName: name,
+    repo: slug,
+    repoId,
+    teamId: options.teamId,
+  })
+}
+
+export async function createVercelProject(options: {
+  token: string
+  githubToken?: string
+  projectName: string
+  /** owner/repo 또는 분리된 owner+repo */
+  repo: string
+  owner?: string
+  repoName?: string
+  repoId?: number
+  teamId?: string
+}): Promise<VercelProjectCreateResult> {
+  const name = sanitizeVercelProjectName(options.projectName)
+  const parsed = parseRepoSlug(options)
+  const slug = `${parsed.owner}/${parsed.repo}`
+
+  let repoId = options.repoId
+  let defaultBranch = 'main'
+  if (options.githubToken) {
+    try {
+      const gh = await getGitHubRepo(options.githubToken, parsed.owner, parsed.repo)
+      repoId = gh.id || repoId
+      defaultBranch = gh.defaultBranch || defaultBranch
+    } catch {
+      // GitHub 조회 실패해도 Vercel 쪽 시도는 계속
+    }
+  }
+
+  // 이름 충돌(이전 빈 프로젝트) 제거 후 Git 연결 생성
+  let withGit = await tryCreateWithGit({
+    token: options.token,
+    name,
+    slug,
+    repoId,
+    teamId: options.teamId,
+  })
+
+  if (!withGit.ok) {
+    const conflict = withGit.errors.some((e) => {
+      const p = parseVercelErrorBody(e)
+      return p.code === 'conflict' || /already exists/i.test(p.message || e)
+    })
+    if (conflict) {
+      try {
+        await deleteVercelProject(options.token, name, options.teamId)
+        withGit = await tryCreateWithGit({
+          token: options.token,
+          name,
+          slug,
+          repoId,
+          teamId: options.teamId,
+        })
+      } catch {
+        // 삭제 실패 시 아래 bare create 경로
+      }
+    }
+  }
+
+  if (withGit.ok) {
+    return { id: withGit.id, name: withGit.name, gitLinked: true }
+  }
+
+  const created = await getOrCreateBareProject({
+    token: options.token,
+    name,
+    teamId: options.teamId,
+  })
+
+  // 빈 프로젝트에 Git 소스로 배포 시도 (repoId 기반)
+  if (repoId) {
+    const deployed = await tryDeployFromGit({
+      token: options.token,
+      projectId: created.id,
+      projectName: created.name,
+      owner: parsed.owner,
+      repo: parsed.repo,
+      repoId,
+      defaultBranch,
+      teamId: options.teamId,
+    })
+    if (deployed.ok) {
+      return {
+        id: created.id,
+        name: created.name,
+        gitLinked: true,
+        deploymentUrl: deployed.url,
+      }
+    }
+    withGit.errors.push(`deploy:${deployed.error}`)
+  }
+
+  const firstParsed = withGit.errors.map(parseVercelErrorBody)
+  const errorLink = withGit.installLink || firstParsed.find((e) => e.link)?.link
+  const installUrl = await resolveOwnerInstallUrl(parsed.owner, options.githubToken, errorLink)
+
   return {
     id: created.id,
     name: created.name,
     gitLinked: false,
+    needsGitHubApp: true,
+    installUrl,
     warning:
-      `프로젝트는 생성됐지만 GitHub 저장소(${options.repo}) 자동 연결에 실패했습니다. ` +
-      `Vercel → Project → Settings → Git 에서 저장소를 직접 연결하세요. 원인: ${gitError}`,
+      `프로젝트(${created.name})는 생성됐지만 GitHub(${slug}) 자동 연결에 실패했습니다. ` +
+      'Vercel GitHub 앱 설치 창이 열리면 해당 계정/조직에 설치한 뒤, 연결이 자동으로 다시 시도됩니다.',
   }
 }
 
