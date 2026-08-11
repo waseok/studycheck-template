@@ -288,11 +288,9 @@ const Onboarding = () => {
           )}
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-gray-900">1. GitHub 템플릿 복제</h2>
+            <h2 className="text-xl font-bold text-gray-900">1. GitHub 템플릿 복제 (필수 · 먼저)</h2>
             <p className="text-sm text-gray-600">
-              {config.github?.configured
-                ? 'GitHub OAuth가 설정되어 있으면 추후 자동 연결로 확장할 수 있습니다. 지금은 토큰 기반 fallback으로 바로 진행됩니다.'
-                : '현재는 GitHub Personal Access Token 방식으로 템플릿 저장소를 새 저장소로 복제합니다.'}
+              Vercel보다 <strong>먼저</strong> GitHub 저장소를 만들어야 합니다. 아래 「GitHub 저장소 생성」이 성공하면 초록색 완료 링크가 뜹니다.
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <input
@@ -324,14 +322,33 @@ const Onboarding = () => {
             {!githubForm.githubToken.trim() && (
               <p className="text-xs text-amber-700">GitHub 토큰을 입력해야 생성할 수 있습니다.</p>
             )}
-            {session?.github?.repoUrl && <p className="text-sm text-green-700">생성 완료: <a className="underline" href={session.github.repoUrl} target="_blank" rel="noreferrer">{session.github.repoUrl}</a></p>}
+            {session?.github?.repoUrl ? (
+              <p className="text-sm text-green-700 font-medium">
+                ✓ 1단계 완료:{' '}
+                <a className="underline" href={session.github.repoUrl} target="_blank" rel="noreferrer">
+                  {session.github.repoUrl}
+                </a>
+              </p>
+            ) : (
+              <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                아직 1단계가 끝나지 않았습니다. GitHub 토큰을 넣고 「GitHub 저장소 생성」을 눌러 초록색 완료 링크가 나올 때까지 진행하세요.
+              </p>
+            )}
           </section>
 
           <section className="space-y-3 border-t border-gray-100 pt-6">
             <h2 className="text-xl font-bold text-gray-900">2. Vercel 프로젝트 연결</h2>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 space-y-1">
+              <p className="font-medium">버튼이 켜지려면 아래 두 가지가 모두 필요합니다.</p>
+              <p>{session?.github?.repo ? '✓' : '○'} 1단계 GitHub 저장소 생성 완료</p>
+              <p>{vercelForm.vercelToken.trim() ? '✓' : '○'} Vercel 토큰 입력</p>
+              <p className="text-xs text-gray-500 pt-1">
+                「팀 목록 불러오기」는 <strong>GitHub 연결이 아닙니다.</strong> Vercel 팀 계정만 고르는 선택 단계이며, 개인 계정이면 건너뛰어도 됩니다.
+              </p>
+            </div>
             {!session?.github?.repo && (
               <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                1단계 GitHub 저장소 생성이 끝난 뒤에 Vercel 프로젝트를 만들 수 있습니다.
+                지금 Vercel 버튼이 비활성인 이유: 1단계 GitHub 저장소가 아직 없습니다. 위로 돌아가 「GitHub 저장소 생성」을 먼저 성공시켜 주세요.
               </p>
             )}
             <TokenGuidePanel guideId="vercel" />
@@ -342,10 +359,11 @@ const Onboarding = () => {
               placeholder="Vercel token"
               className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
             />
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
               <button type="button" onClick={handleLoadVercelTeams} disabled={submitting || !vercelForm.vercelToken.trim()} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
-                팀 목록 불러오기
+                팀 목록 불러오기 (선택)
               </button>
+              <span className="text-xs text-gray-500">개인 계정이면 안 눌러도 됨</span>
               {vercelTeams.length > 0 && (
                 <select
                   value={vercelForm.teamId}
@@ -370,7 +388,7 @@ const Onboarding = () => {
             <button type="button" onClick={handleVercel} disabled={submitting || !session?.github?.repo || !vercelForm.vercelToken.trim()} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
               {submitting ? '생성 중...' : 'Vercel 프로젝트 생성'}
             </button>
-            {session?.vercel?.projectId && <p className="text-sm text-green-700">Vercel 프로젝트 연결 완료: {session.vercel.projectName}</p>}
+            {session?.vercel?.projectId && <p className="text-sm text-green-700">✓ Vercel 프로젝트 연결 완료: {session.vercel.projectName}</p>}
           </section>
 
           <section className="space-y-3 border-t border-gray-100 pt-6">
