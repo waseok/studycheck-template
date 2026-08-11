@@ -700,84 +700,128 @@ const Onboarding = () => {
 
           <section className="space-y-3 border-t border-gray-100 pt-6">
             <h2 className="text-xl font-bold text-gray-900">3. Supabase 연결</h2>
-            <p className="text-sm text-gray-600">완전 자동 생성이 어려울 수 있어, 관리 토큰으로 프로젝트를 만들거나 기존 Session pooler URI를 직접 연결할 수 있습니다.</p>
-            <TokenGuidePanel guideId="supabase-token" />
-            <input
-              type="password"
-              value={supabaseForm.supabaseToken}
-              onChange={(e) => setSupabaseForm((prev) => ({ ...prev, supabaseToken: e.target.value }))}
-              placeholder="Supabase management token (선택)"
-              className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
-            />
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={handleLoadSupabaseResources} disabled={submitting || !supabaseForm.supabaseToken} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
-                조직 목록 불러오기
+            <p className="text-sm text-gray-600">
+              무료 티어를 이미 쓰신 경우 <strong>새 프로젝트를 만들지 마세요.</strong> 아래 「기존 프로젝트 연결」에 DATABASE_URL만 넣으면 됩니다.
+            </p>
+
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-3 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-indigo-950">기존 프로젝트 연결 (추천)</p>
+                <p className="text-xs text-indigo-900/80 mt-1">
+                  필수 값은 Session pooler DATABASE_URL 하나입니다. 프로젝트 URL·ref는 선택이며, 비워 둬도 연결됩니다.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-700">프로젝트 URL (선택)</label>
+                  <input
+                    value={supabaseForm.projectUrl}
+                    onChange={(e) => {
+                      const projectUrl = e.target.value
+                      const match = projectUrl.match(/https?:\/\/([a-z0-9]+)\.supabase\.co/i)
+                      setSupabaseForm((prev) => ({
+                        ...prev,
+                        projectUrl,
+                        // URL을 붙이면 ref를 자동으로 채움 (예: abcdxyz.supabase.co → abcdxyz)
+                        projectRef: match?.[1] || prev.projectRef,
+                      }))
+                    }}
+                    placeholder="예: https://abcdxyz.supabase.co"
+                    className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                  />
+                  <p className="text-[11px] text-gray-500">Project Settings → API 의 Project URL</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-700">Project Ref (선택)</label>
+                  <input
+                    value={supabaseForm.projectRef}
+                    onChange={(e) => setSupabaseForm((prev) => ({ ...prev, projectRef: e.target.value }))}
+                    placeholder="예: abcdxyz"
+                    className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                  />
+                  <p className="text-[11px] text-gray-500">
+                    URL의 가운데 짧은 ID입니다. <code className="bg-white/80 px-1 rounded">https://[이부분].supabase.co</code>
+                  </p>
+                </div>
+              </div>
+              <TokenGuidePanel guideId="supabase-database" />
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-700">Session pooler DATABASE_URL (필수)</label>
+                <textarea
+                  value={supabaseForm.databaseUrl}
+                  onChange={(e) => setSupabaseForm((prev) => ({ ...prev, databaseUrl: e.target.value }))}
+                  placeholder="postgresql://postgres.xxxx:비밀번호@aws-0-....pooler.supabase.com:5432/postgres"
+                  rows={3}
+                  className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+              <button type="button" onClick={handleConnectSupabase} disabled={submitting || !supabaseForm.databaseUrl} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                {submitting ? '확인 중...' : '기존 Supabase 연결 확인'}
               </button>
-              {supabaseOrganizations.length > 0 && (
-                <select
-                  value={supabaseForm.organizationId}
-                  onChange={(e) => setSupabaseForm((prev) => ({ ...prev, organizationId: e.target.value }))}
-                  className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="">조직 선택</option>
-                  {supabaseOrganizations.map((org) => (
-                    <option key={org.id} value={org.id}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
-              )}
+              {session?.supabase?.databaseUrl && <p className="text-sm text-green-700">✓ Supabase 연결 완료</p>}
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <input
-                value={supabaseForm.createProjectName}
-                onChange={(e) => setSupabaseForm((prev) => ({ ...prev, createProjectName: e.target.value }))}
-                placeholder="새 Supabase 프로젝트명"
-                className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
-              />
-              <input
-                value={supabaseForm.createRegion}
-                onChange={(e) => setSupabaseForm((prev) => ({ ...prev, createRegion: e.target.value }))}
-                placeholder="region (예: ap-northeast-2)"
-                className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
-              />
-              <input
-                type="password"
-                value={supabaseForm.dbPassword}
-                onChange={(e) => setSupabaseForm((prev) => ({ ...prev, dbPassword: e.target.value }))}
-                placeholder="DB 비밀번호"
-                className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
-              />
-            </div>
-            <button type="button" onClick={handleCreateSupabaseProject} disabled={submitting || !supabaseForm.supabaseToken || !supabaseForm.organizationId} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
-              Supabase 프로젝트 생성
-            </button>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <input
-                value={supabaseForm.projectUrl}
-                onChange={(e) => setSupabaseForm((prev) => ({ ...prev, projectUrl: e.target.value }))}
-                placeholder="Supabase 프로젝트 URL"
-                className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
-              />
-              <input
-                value={supabaseForm.projectRef}
-                onChange={(e) => setSupabaseForm((prev) => ({ ...prev, projectRef: e.target.value }))}
-                placeholder="project ref"
-                className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
-              />
-            </div>
-            <TokenGuidePanel guideId="supabase-database" />
-            <textarea
-              value={supabaseForm.databaseUrl}
-              onChange={(e) => setSupabaseForm((prev) => ({ ...prev, databaseUrl: e.target.value }))}
-              placeholder="Session pooler DATABASE_URL"
-              rows={3}
-              className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:outline-none"
-            />
-            <button type="button" onClick={handleConnectSupabase} disabled={submitting || !supabaseForm.databaseUrl} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-              Supabase 연결 확인
-            </button>
-            {session?.supabase?.databaseUrl && <p className="text-sm text-green-700">Supabase 연결 완료</p>}
+
+            <details className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+              <summary className="cursor-pointer text-sm font-medium text-gray-800">
+                새 Supabase 프로젝트 만들기 (선택 · 무료 티어가 남아 있을 때만)
+              </summary>
+              <div className="mt-3 space-y-3">
+                <p className="text-xs text-gray-600">
+                  이미 무료 프로젝트를 다 쓰셨다면 이 구간은 건너뛰세요. 관리 토큰으로 조직/프로젝트를 새로 만들 때만 사용합니다.
+                </p>
+                <TokenGuidePanel guideId="supabase-token" />
+                <input
+                  type="password"
+                  value={supabaseForm.supabaseToken}
+                  onChange={(e) => setSupabaseForm((prev) => ({ ...prev, supabaseToken: e.target.value }))}
+                  placeholder="Supabase management token"
+                  className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={handleLoadSupabaseResources} disabled={submitting || !supabaseForm.supabaseToken} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
+                    조직 목록 불러오기
+                  </button>
+                  {supabaseOrganizations.length > 0 && (
+                    <select
+                      value={supabaseForm.organizationId}
+                      onChange={(e) => setSupabaseForm((prev) => ({ ...prev, organizationId: e.target.value }))}
+                      className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                    >
+                      <option value="">조직 선택</option>
+                      {supabaseOrganizations.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <input
+                    value={supabaseForm.createProjectName}
+                    onChange={(e) => setSupabaseForm((prev) => ({ ...prev, createProjectName: e.target.value }))}
+                    placeholder="새 Supabase 프로젝트명"
+                    className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                  />
+                  <input
+                    value={supabaseForm.createRegion}
+                    onChange={(e) => setSupabaseForm((prev) => ({ ...prev, createRegion: e.target.value }))}
+                    placeholder="region (예: ap-northeast-2)"
+                    className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                  />
+                  <input
+                    type="password"
+                    value={supabaseForm.dbPassword}
+                    onChange={(e) => setSupabaseForm((prev) => ({ ...prev, dbPassword: e.target.value }))}
+                    placeholder="DB 비밀번호"
+                    className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <button type="button" onClick={handleCreateSupabaseProject} disabled={submitting || !supabaseForm.supabaseToken || !supabaseForm.organizationId} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
+                  Supabase 프로젝트 생성
+                </button>
+              </div>
+            </details>
           </section>
 
           <section className="space-y-3 border-t border-gray-100 pt-6">

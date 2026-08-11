@@ -163,18 +163,21 @@ export const TOKEN_GUIDES: Record<TokenGuideId, TokenGuideContent> = {
   },
   'supabase-database': {
     title: 'Supabase Session pooler DATABASE_URL',
-    summary: '앱이 Supabase Postgres에 연결할 때 쓰는 주소입니다. Direct connection 이 아니라 Session pooler 를 선택해야 합니다.',
+    summary: '기존 프로젝트에 연결할 때 꼭 필요한 값입니다. Direct connection 이 아니라 Session pooler 를 선택하세요.',
     openUrl: 'https://supabase.com/dashboard/project/_/settings/database',
     openLabel: 'Supabase Database 설정 열기',
     steps: [
-      'Supabase 대시보드에서 해당 프로젝트를 선택합니다.',
+      'Supabase 대시보드에서 기존 프로젝트를 선택합니다.',
       '좌측 Settings → Database 로 이동합니다.',
       'Connection string 섹션에서 Type: URI 를 선택합니다.',
       'Method에서 Session pooler 를 선택합니다. (Direct connection 사용 금지)',
       '표시된 URI에서 [YOUR-PASSWORD] 를 실제 DB 비밀번호로 바꾼 뒤 복사합니다.',
       '비밀번호에 ! @ # 등 특수문자가 있으면 URL 인코딩(! → %21) 후 붙여넣습니다.',
     ],
-    tips: ['프로젝트를 방금 만들었다면 DB 비밀번호는 생성 시 입력한 값입니다.'],
+    tips: [
+      'Project Ref는 https://[ref].supabase.co 의 [ref] 부분입니다. URL만 넣으면 자동으로 채워집니다.',
+      'Ref와 프로젝트 URL은 선택 값입니다. DATABASE_URL만 있어도 연결됩니다.',
+    ],
     mockScreenshot: (
       <MockBrowserFrame url="supabase.com/dashboard/project/.../settings/database">
         <div className="space-y-3">
