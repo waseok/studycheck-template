@@ -3,7 +3,7 @@
   "version": 2,
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "frontend/dist",
-  "installCommand": "npm install && cd backend && npm install && cd ../frontend && npm install",
+  "installCommand": "npm install && cd backend && npm install --include=dev && cd ../frontend && npm install --include=dev",
   "framework": null,
   "rewrites": [
     {

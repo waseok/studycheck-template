@@ -6,7 +6,10 @@ const DEFAULT_GITHUB_APP_INSTALL = 'https://github.com/apps/vercel/installations
 /** studycheck-template 기본 빌드 설정 (첫 배포·프로젝트 설정 공통) */
 const STUDYCHECK_PROJECT_SETTINGS = {
   framework: null as string | null,
-  installCommand: 'npm install && cd backend && npm install && cd ../frontend && npm install',
+  // NODE_ENV=production 이 프로젝트 env에 있으면 npm이 devDependencies를 건너뛰므로
+  // typescript/vite 가 빠져 tsc: command not found(127) 가 난다. 빌드용으로 --include=dev 강제.
+  installCommand:
+    'npm install && cd backend && npm install --include=dev && cd ../frontend && npm install --include=dev',
   buildCommand: 'npm run vercel-build',
   outputDirectory: 'frontend/dist',
   devCommand: null as string | null,
@@ -697,6 +700,35 @@ export async function upsertVercelEnv(
   }
 }
 
+/** 프로젝트 환경변수 삭제 (없으면 무시) */
+export async function deleteVercelEnv(
+  token: string,
+  projectId: string,
+  key: string,
+  teamId?: string
+): Promise<boolean> {
+  const listRes = await vercelFetch(token, `/v9/projects/${projectId}/env`, undefined, teamId)
+  if (!listRes.ok) return false
+  const listData = (await listRes.json()) as { envs?: Array<{ id: string; key: string }> }
+  const existing = listData.envs?.find((env) => env.key === key)
+  if (!existing) return false
+
+  const delRes = await vercelFetch(
+    token,
+    `/v9/projects/${projectId}/env/${existing.id}`,
+    { method: 'DELETE' },
+    teamId
+  )
+  if (!delRes.ok) {
+    console.warn(
+      `Vercel env delete warning(${key}):`,
+      formatVercelApiError(await delRes.text(), '환경변수 삭제 실패')
+    )
+    return false
+  }
+  return true
+}
+
 /**
  * 최신 배포를 재배포하여 환경변수 적용.
  * - 배포가 없거나
@@ -808,7 +840,10 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
 
   await upsertVercelEnv(token, projectId, 'DATABASE_URL', databaseUrl, teamId)
   await upsertVercelEnv(token, projectId, 'JWT_SECRET', jwtSecret, teamId)
-  await upsertVercelEnv(token, projectId, 'NODE_ENV', 'production', teamId)
+  // NODE_ENV=production 을 프로젝트 env로 두면 Install 단계에서 npm이
+  // typescript(devDependency)를 건너뛰어 tsc: command not found 가 난다.
+  // 런타임 NODE_ENV는 Vercel이 배포 시 알아서 설정하므로 여기서는 제거만 한다.
+  await deleteVercelEnv(token, projectId, 'NODE_ENV', teamId)
 
   // gitSource 확보 (세션 → Vercel project link)
   let gitSource = options.gitSource
@@ -874,7 +909,7 @@ export async function applyVercelEnvAndRedeploy(options: {
   const { token, projectId, teamId, databaseUrl, jwtSecret } = options
   await upsertVercelEnv(token, projectId, 'DATABASE_URL', databaseUrl, teamId)
   await upsertVercelEnv(token, projectId, 'JWT_SECRET', jwtSecret, teamId)
-  await upsertVercelEnv(token, projectId, 'NODE_ENV', 'production', teamId)
+  await deleteVercelEnv(token, projectId, 'NODE_ENV', teamId)
   const redeployed = await redeployVercelProject(token, projectId, teamId)
   return { redeployed }
 }
