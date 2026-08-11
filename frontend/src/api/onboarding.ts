@@ -71,6 +71,12 @@ export async function getOnboardingConfig() {
       supabaseRegion: string
     }
   }>('/onboarding/config')
+
+  // SPA rewrite로 HTML이 오면 JSON API가 아닌 상태로 간주
+  if (typeof response.data !== 'object' || response.data === null || !('github' in response.data)) {
+    throw new Error('온보딩 API 응답이 올바르지 않습니다. /api 라우팅을 확인해주세요.')
+  }
+
   return response.data
 }
 
