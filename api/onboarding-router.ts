@@ -13,6 +13,7 @@ import {
 } from '../backend/src/utils/github'
 import {
   createVercelProject,
+  ensureVercelProjectForProvision,
   ensureVercelProjectGitLinked,
   getVercelUser,
   listVercelTeams,
@@ -501,6 +502,22 @@ async function handleProvision(req: any, res: any) {
     return json(res, 400, { error: 'JWT_SECRET은 16자 이상이어야 합니다.' })
   }
 
+  // 0) Vercel 프로젝트가 대시보드에서 사라진 경우 자동 재생성
+  const ensured = await ensureVercelProjectForProvision({
+    token: session.tokens.vercelToken,
+    githubToken: session.tokens.githubToken,
+    projectId: session.vercel.projectId,
+    projectName: session.vercel.projectName,
+    teamId: session.vercel.teamId,
+    repoOwner: session.github?.owner,
+    repoName: session.github?.repo,
+  })
+  if (ensured.recreated) {
+    console.log(`Recreated missing Vercel project: ${ensured.name} (${ensured.id})`)
+  }
+  const vercelProjectId = ensured.id
+  const vercelProjectName = ensured.name
+
   // 1) DB 스키마/기본 설정
   try {
     await pushDatabaseSchema(session.supabase.databaseUrl)
@@ -559,8 +576,8 @@ async function handleProvision(req: any, res: any) {
   // 3) 환경변수 + 재배포/첫 배포
   const deployResult = await applyVercelEnvAndEnsureDeploy({
     token: session.tokens.vercelToken,
-    projectId: session.vercel.projectId,
-    projectName: session.vercel.projectName,
+    projectId: vercelProjectId,
+    projectName: vercelProjectName,
     teamId: session.vercel.teamId,
     databaseUrl: session.supabase.databaseUrl,
     jwtSecret,
@@ -570,11 +587,17 @@ async function handleProvision(req: any, res: any) {
   const deploymentUrl =
     deployResult.deploymentUrl ||
     session.vercel.deploymentUrl ||
-    `https://${session.vercel.projectName}.vercel.app`
+    `https://${vercelProjectName}.vercel.app`
 
   const updated = updateOnboardingSession(session, {
     status: 'READY_FOR_SETUP',
-    vercel: { ...session.vercel, deploymentUrl },
+    vercel: {
+      ...session.vercel,
+      projectId: vercelProjectId,
+      projectName: vercelProjectName,
+      gitLinked: ensured.gitLinked,
+      deploymentUrl,
+    },
   })
   return json(res, 200, {
     success: true,
@@ -583,7 +606,9 @@ async function handleProvision(req: any, res: any) {
     deploymentUrl,
     message:
       deployResult.mode === 'first_deploy'
-        ? '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+        ? ensured.recreated
+          ? '사라진 Vercel 프로젝트를 다시 만들고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+          : '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
         : '환경변수를 저장하고 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
   })
 }

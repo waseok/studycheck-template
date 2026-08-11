@@ -24,6 +24,7 @@ import {
 import {
   applyVercelEnvAndEnsureDeploy,
   createVercelProject,
+  ensureVercelProjectForProvision,
   getVercelOAuthConfig,
   getVercelUser,
   listVercelTeams,
@@ -363,12 +364,26 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
   }
 
   try {
+    const ensured = await ensureVercelProjectForProvision({
+      token: session.tokens.vercelToken,
+      githubToken: session.tokens.githubToken,
+      projectId: session.vercel.projectId,
+      projectName: session.vercel.projectName,
+      teamId: session.vercel.teamId,
+      repoOwner: session.github?.owner,
+      repoName: session.github?.repo,
+    })
+    if (ensured.recreated) {
+      console.log(`Recreated missing Vercel project: ${ensured.name} (${ensured.id})`)
+    }
+    const vercelProjectId = ensured.id
+    const vercelProjectName = ensured.name
+    const vercelTeamId = session.vercel.teamId
+    const databaseUrl = session.supabase.databaseUrl
+
     try {
-      await pushDatabaseSchema(session.supabase.databaseUrl)
-      await ensureDefaultSettings(
-        session.supabase.databaseUrl,
-        session.supabase.projectUrl || undefined
-      )
+      await pushDatabaseSchema(databaseUrl)
+      await ensureDefaultSettings(databaseUrl, session.supabase.projectUrl || undefined)
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
       throw new Error(
@@ -415,10 +430,10 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
 
     const deployResult = await applyVercelEnvAndEnsureDeploy({
       token: session.tokens.vercelToken,
-      projectId: session.vercel.projectId,
-      projectName: session.vercel.projectName,
-      teamId: session.vercel.teamId,
-      databaseUrl: session.supabase.databaseUrl,
+      projectId: vercelProjectId,
+      projectName: vercelProjectName,
+      teamId: vercelTeamId,
+      databaseUrl,
       jwtSecret: jwtSecret.trim(),
       gitSource,
     })
@@ -426,12 +441,15 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
     const deploymentUrl =
       deployResult.deploymentUrl ||
       session.vercel.deploymentUrl ||
-      `https://${session.vercel.projectName}.vercel.app`
+      `https://${vercelProjectName}.vercel.app`
 
     const updated = updateOnboardingSession(session, {
       status: 'READY_FOR_SETUP',
       vercel: {
         ...session.vercel,
+        projectId: vercelProjectId,
+        projectName: vercelProjectName,
+        gitLinked: ensured.gitLinked,
         deploymentUrl,
       },
     })
@@ -440,7 +458,9 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
       deploymentUrl,
       message:
         deployResult.mode === 'first_deploy'
-          ? '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+          ? ensured.recreated
+            ? '사라진 Vercel 프로젝트를 다시 만들고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+            : '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
           : '환경변수를 저장하고 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
     })
   } catch (error) {

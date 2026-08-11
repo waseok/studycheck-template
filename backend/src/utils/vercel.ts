@@ -225,6 +225,97 @@ export async function deleteVercelProject(
   }
 }
 
+/** 프로젝트 조회 — 없으면 null */
+export async function getVercelProject(
+  token: string,
+  idOrName: string,
+  teamId?: string
+): Promise<{ id: string; name: string; link?: { type?: string; repo?: string; org?: string } } | null> {
+  const res = await vercelFetch(
+    token,
+    `/v9/projects/${encodeURIComponent(idOrName)}`,
+    undefined,
+    teamId
+  )
+  if (res.status === 404) return null
+  if (!res.ok) {
+    throw new Error(formatVercelApiError(await res.text(), 'Vercel 프로젝트 조회 실패'))
+  }
+  return (await res.json()) as {
+    id: string
+    name: string
+    link?: { type?: string; repo?: string; org?: string }
+  }
+}
+
+/**
+ * 4단계용: 세션의 projectId/이름이 Vercel에 실제로 있는지 확인하고,
+ * 없으면 GitHub 저장소와 연결해 다시 만듭니다.
+ */
+export async function ensureVercelProjectForProvision(options: {
+  token: string
+  githubToken?: string
+  projectId?: string
+  projectName: string
+  teamId?: string
+  repoOwner?: string
+  repoName?: string
+}): Promise<{
+  id: string
+  name: string
+  recreated: boolean
+  gitLinked: boolean
+  warning?: string
+}> {
+  const name = sanitizeVercelProjectName(options.projectName)
+
+  if (options.projectId) {
+    const byId = await getVercelProject(options.token, options.projectId, options.teamId)
+    if (byId) {
+      return {
+        id: byId.id,
+        name: byId.name || name,
+        recreated: false,
+        gitLinked: Boolean(byId.link?.type),
+      }
+    }
+  }
+
+  const byName = await getVercelProject(options.token, name, options.teamId)
+  if (byName) {
+    return {
+      id: byName.id,
+      name: byName.name || name,
+      recreated: false,
+      gitLinked: Boolean(byName.link?.type),
+    }
+  }
+
+  if (!options.repoOwner || !options.repoName) {
+    throw new Error(
+      `Vercel 프로젝트(${name})를 찾을 수 없습니다. ` +
+        '대시보드에 프로젝트가 없으면 온보딩 2단계에서 「Vercel 프로젝트 만들기」를 다시 실행하세요.'
+    )
+  }
+
+  console.warn(`Vercel project missing (${options.projectId || name}) — recreating`)
+  const created = await createVercelProject({
+    token: options.token,
+    githubToken: options.githubToken,
+    projectName: name,
+    repo: `${options.repoOwner}/${options.repoName}`,
+    teamId: options.teamId,
+  })
+
+  return {
+    id: created.id,
+    name: created.name,
+    recreated: true,
+    gitLinked: created.gitLinked,
+    warning: created.warning,
+  }
+}
+
 async function tryCreateWithGit(options: {
   token: string
   name: string
@@ -475,18 +566,38 @@ export async function createVercelProject(options: {
       const p = parseVercelErrorBody(e)
       return p.code === 'conflict' || /already exists/i.test(p.message || e)
     })
+    // 이름 충돌이면 기존 프로젝트를 재사용 (삭제하지 않음 — 대시보드에서 프로젝트가 사라지던 원인)
     if (conflict) {
-      try {
-        await deleteVercelProject(options.token, name, options.teamId)
-        withGit = await tryCreateWithGit({
-          token: options.token,
-          name,
-          slug,
-          repoId,
-          teamId: options.teamId,
-        })
-      } catch {
-        // 삭제 실패 시 아래 bare create 경로
+      const existing = await getVercelProject(options.token, name, options.teamId)
+      if (existing) {
+        if (repoId) {
+          const deployed = await tryDeployFromGit({
+            token: options.token,
+            projectId: existing.id,
+            projectName: existing.name,
+            owner: parsed.owner,
+            repo: parsed.repo,
+            repoId,
+            defaultBranch,
+            teamId: options.teamId,
+          })
+          if (deployed.ok) {
+            return {
+              id: existing.id,
+              name: existing.name,
+              gitLinked: true,
+              deploymentUrl: deployed.url,
+            }
+          }
+        }
+        return {
+          id: existing.id,
+          name: existing.name,
+          gitLinked: Boolean(existing.link?.type),
+          warning: existing.link?.type
+            ? undefined
+            : `같은 이름의 프로젝트(${existing.name})가 이미 있어 재사용합니다. GitHub 연결이 필요하면 「GitHub 앱 설치 후 다시 연결」을 눌러주세요.`,
+        }
       }
     }
   }
