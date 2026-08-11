@@ -58,9 +58,45 @@ apiClient.interceptors.request.use(
 // 응답 인터셉터: 에러 처리
 let isRedirecting = false
 
+function normalizeApiErrorPayload(data: unknown): unknown {
+  if (!data || typeof data !== 'object') return data
+  const obj = data as Record<string, unknown>
+  const next = { ...obj }
+
+  if (next.error && typeof next.error === 'object') {
+    const nested = next.error as { message?: unknown; code?: unknown }
+    if (typeof nested.message === 'string') {
+      next.error =
+        nested.code !== undefined && nested.code !== null
+          ? `[${String(nested.code)}] ${nested.message}`
+          : nested.message
+    } else {
+      try {
+        next.error = JSON.stringify(next.error)
+      } catch {
+        next.error = '요청 처리 중 오류가 발생했습니다.'
+      }
+    }
+  }
+
+  if (next.message && typeof next.message === 'object') {
+    try {
+      next.message = JSON.stringify(next.message)
+    } catch {
+      next.message = '요청 처리 중 오류가 발생했습니다.'
+    }
+  }
+
+  return next
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error?.response?.data) {
+      error.response.data = normalizeApiErrorPayload(error.response.data)
+    }
+
     const status = error.response?.status
     const path = window.location.pathname
     const requestUrl = String(error.config?.url || '')
