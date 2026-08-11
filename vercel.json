@@ -29,6 +29,18 @@
     },
     "api/onboarding/session.ts": {
       "maxDuration": 30
+    },
+    "api/onboarding/supabase/resources.ts": {
+      "maxDuration": 30
+    },
+    "api/onboarding/supabase/project.ts": {
+      "maxDuration": 60
+    },
+    "api/onboarding/supabase/connect.ts": {
+      "maxDuration": 30
+    },
+    "api/onboarding/provision.ts": {
+      "maxDuration": 60
     }
   }
 }
