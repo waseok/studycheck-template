@@ -62,9 +62,36 @@ export async function pushDatabaseSchema(databaseUrl: string): Promise<void> {
   }
 }
 
+/**
+ * Supabase/Prisma 에서 자주 빠뜨리는 쿼리 파라미터를 보정합니다.
+ * - sslmode=require
+ * - Transaction pooler(6543)면 pgbouncer=true
+ */
+export function normalizeDatabaseUrl(databaseUrl: string): string {
+  try {
+    const url = new URL(databaseUrl.trim())
+    const host = url.hostname.toLowerCase()
+    const isSupabase =
+      host.includes('supabase.co') ||
+      host.includes('supabase.com') ||
+      host.includes('pooler.supabase')
+
+    if (isSupabase && !url.searchParams.has('sslmode')) {
+      url.searchParams.set('sslmode', 'require')
+    }
+    // Transaction mode pooler (보통 6543) 는 Prisma에 pgbouncer=true 필요
+    if (url.port === '6543' && !url.searchParams.has('pgbouncer')) {
+      url.searchParams.set('pgbouncer', 'true')
+    }
+    return url.toString()
+  } catch {
+    return databaseUrl.trim()
+  }
+}
+
 function withDatabaseTimeout(databaseUrl: string): string {
   try {
-    const url = new URL(databaseUrl)
+    const url = new URL(normalizeDatabaseUrl(databaseUrl))
     if (!url.searchParams.has('connect_timeout')) {
       url.searchParams.set('connect_timeout', String(DB_CONNECT_TIMEOUT_SECONDS))
     }
@@ -75,6 +102,15 @@ function withDatabaseTimeout(databaseUrl: string): string {
   } catch {
     return databaseUrl
   }
+}
+
+/** 로그/API용 — URL·비밀번호를 가린 짧은 에러 문자열 */
+export function sanitizeDbError(error: unknown): string {
+  let text = error instanceof Error ? error.message : String(error)
+  text = text.replace(/postgresql:\/\/[^@\s]+@/gi, 'postgresql://***@')
+  text = text.replace(/postgres(?:ql)?:\/\/[^\s'"]+/gi, 'postgresql://***')
+  text = text.replace(/password[=:]\s*\S+/gi, 'password=***')
+  return text.slice(0, 280)
 }
 
 async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
@@ -131,10 +167,23 @@ export async function ensureDefaultSettings(
 
 /** 현재 런타임 DATABASE_URL로 DB 연결 가능 여부 */
 export async function isDatabaseReady(): Promise<boolean> {
-  if (!process.env.DATABASE_URL) return false
+  const probed = await probeRuntimeDatabase()
+  return probed.ok
+}
+
+/** SetupGate/진단용 — 실패 원인까지 반환 */
+export async function probeRuntimeDatabase(): Promise<{
+  ok: boolean
+  hasDatabaseUrl: boolean
+  error?: string
+}> {
+  const raw = process.env.DATABASE_URL?.trim()
+  if (!raw) {
+    return { ok: false, hasDatabaseUrl: false, error: 'missing_DATABASE_URL' }
+  }
   try {
     const client = new PrismaClient({
-      datasources: { db: { url: withDatabaseTimeout(process.env.DATABASE_URL) } },
+      datasources: { db: { url: withDatabaseTimeout(raw) } },
     })
     try {
       await withTimeout(client.$connect(), 'Runtime database connection')
@@ -142,8 +191,9 @@ export async function isDatabaseReady(): Promise<boolean> {
     } finally {
       await client.$disconnect()
     }
-    return true
-  } catch {
-    return false
+    return { ok: true, hasDatabaseUrl: true }
+  } catch (error) {
+    console.error('probeRuntimeDatabase failed:', sanitizeDbError(error))
+    return { ok: false, hasDatabaseUrl: true, error: sanitizeDbError(error) }
   }
 }

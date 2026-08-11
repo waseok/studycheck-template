@@ -3,6 +3,8 @@
  * Express(api/index) 전체를 띄우지 않는 경량 게이트.
  * - DATABASE_URL 없음(일반화/온보딩 사이트): 즉시 needsInfra
  * - DATABASE_URL 있음(학교/테스트 사이트): 짧은 DB 핑 후 상태 반환
+ *
+ * hasDatabaseUrl / dbError 로 「env 미반영」과 「연결 실패」를 구분합니다.
  */
 export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json')
@@ -20,7 +22,8 @@ export default async function handler(req: any, res: any) {
     onVercel: Boolean(process.env.VERCEL),
   }
 
-  if (!process.env.DATABASE_URL) {
+  const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim())
+  if (!hasDatabaseUrl) {
     res.statusCode = 200
     res.end(
       JSON.stringify({
@@ -28,17 +31,18 @@ export default async function handler(req: any, res: any) {
         setupCompleted: false,
         needsInfra: true,
         dbConnected: false,
+        hasDatabaseUrl: false,
+        reason: 'missing_DATABASE_URL',
       })
     )
     return
   }
 
   try {
-    const { isDatabaseReady } = await import('../../backend/src/utils/dbBootstrap')
-    const { getAppSettings } = await import('../../backend/src/utils/settings')
+    const { probeRuntimeDatabase } = await import('../../backend/src/utils/dbBootstrap')
+    const probed = await probeRuntimeDatabase()
 
-    const dbConnected = await isDatabaseReady()
-    if (!dbConnected) {
+    if (!probed.ok) {
       res.statusCode = 200
       res.end(
         JSON.stringify({
@@ -46,11 +50,15 @@ export default async function handler(req: any, res: any) {
           setupCompleted: false,
           needsInfra: true,
           dbConnected: false,
+          hasDatabaseUrl: true,
+          reason: 'db_unreachable',
+          dbError: probed.error || 'database_unreachable',
         })
       )
       return
     }
 
+    const { getAppSettings } = await import('../../backend/src/utils/settings')
     const settings = await getAppSettings()
     res.statusCode = 200
     res.end(
@@ -59,10 +67,12 @@ export default async function handler(req: any, res: any) {
         setupCompleted: Boolean(settings.setupCompleted),
         needsInfra: false,
         dbConnected: true,
+        hasDatabaseUrl: true,
       })
     )
   } catch (error) {
-    console.error('settings/status lightweight handler error:', error)
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('settings/status lightweight handler error:', message)
     res.statusCode = 200
     res.end(
       JSON.stringify({
@@ -70,6 +80,9 @@ export default async function handler(req: any, res: any) {
         setupCompleted: false,
         needsInfra: true,
         dbConnected: false,
+        hasDatabaseUrl: true,
+        reason: 'handler_error',
+        dbError: message.slice(0, 280),
       })
     )
   }

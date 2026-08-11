@@ -1,4 +1,5 @@
 import { getGitHubRepo } from './github'
+import { normalizeDatabaseUrl } from './dbBootstrap'
 
 const VERCEL_API = 'https://api.vercel.com'
 const DEFAULT_GITHUB_APP_INSTALL = 'https://github.com/apps/vercel/installations/new'
@@ -765,27 +766,37 @@ export async function upsertVercelEnv(
   value: string,
   teamId?: string
 ): Promise<void> {
+  const resolvedValue = key === 'DATABASE_URL' ? normalizeDatabaseUrl(value) : value
+
   const listRes = await vercelFetch(token, `/v9/projects/${projectId}/env`, undefined, teamId)
   if (!listRes.ok) {
     throw new Error(formatVercelApiError(await listRes.text(), `환경변수 조회 실패(${key})`))
   }
 
-  const listData = (await listRes.json()) as { envs?: Array<{ id: string; key: string }> }
-  const existing = listData.envs?.find((env) => env.key === key)
+  const listData = (await listRes.json()) as {
+    envs?: Array<{ id: string; key: string; target?: string[] }>
+  }
+  // 같은 key가 production/preview 등으로 여러 개일 수 있어 전부 갱신
+  const existingList = (listData.envs || []).filter((env) => env.key === key)
   const targets = ['production', 'preview', 'development']
 
-  if (existing) {
-    const patchRes = await vercelFetch(
-      token,
-      `/v9/projects/${projectId}/env/${existing.id}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ value, target: targets }),
-      },
-      teamId
-    )
-    if (!patchRes.ok) {
-      throw new Error(formatVercelApiError(await patchRes.text(), `환경변수 수정 실패(${key})`))
+  if (existingList.length > 0) {
+    for (const existing of existingList) {
+      const patchRes = await vercelFetch(
+        token,
+        `/v9/projects/${projectId}/env/${existing.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            value: resolvedValue,
+            target: existing.target?.length ? existing.target : targets,
+          }),
+        },
+        teamId
+      )
+      if (!patchRes.ok) {
+        throw new Error(formatVercelApiError(await patchRes.text(), `환경변수 수정 실패(${key})`))
+      }
     }
     return
   }
@@ -797,7 +808,7 @@ export async function upsertVercelEnv(
       method: 'POST',
       body: JSON.stringify({
         key,
-        value,
+        value: resolvedValue,
         type: 'encrypted',
         target: targets,
       }),

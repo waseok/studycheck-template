@@ -538,10 +538,16 @@ async function handleSupabaseConnect(req: any, res: any) {
     return json(res, 400, { error: 'Supabase Session pooler DATABASE_URL을 입력해주세요.' })
   }
 
+  const { normalizeDatabaseUrl } = await import('../backend/src/utils/dbBootstrap')
+  const normalizedUrl = normalizeDatabaseUrl(databaseUrl)
+
   try {
-    await testDatabaseConnection(databaseUrl)
+    await testDatabaseConnection(normalizedUrl)
   } catch {
-    return json(res, 400, { error: 'Supabase DATABASE_URL 연결에 실패했습니다.' })
+    return json(res, 400, {
+      error:
+        'Supabase DATABASE_URL 연결에 실패했습니다. Session pooler(포트 5432) URI와 비밀번호를 확인해주세요.',
+    })
   }
 
   const updated = updateOnboardingSession(session, {
@@ -549,7 +555,7 @@ async function handleSupabaseConnect(req: any, res: any) {
     supabase: {
       projectUrl: String(body.projectUrl || session.supabase?.projectUrl || '').trim() || undefined,
       projectRef: String(body.projectRef || session.supabase?.projectRef || '').trim() || undefined,
-      databaseUrl,
+      databaseUrl: normalizedUrl,
       region: String(body.region || session.supabase?.region || '').trim() || undefined,
     },
   })
@@ -647,7 +653,8 @@ async function handleProvision(req: any, res: any) {
     }
   }
 
-  // 5) Git push로 이미 배포가 걸렸으면 수동 트리거 생략 (이중 배포 방지)
+  // 5) DATABASE_URL 은 배포 시점에 바인딩되므로, Git webhook이 있었더라도
+  //    마지막에 반드시 한 번 더 명시 배포해서 현재 Production에 env가 붙게 한다.
   const deployResult = await applyVercelEnvAndEnsureDeploy({
     token: session.tokens.vercelToken,
     projectId: vercelProjectId,
@@ -656,7 +663,7 @@ async function handleProvision(req: any, res: any) {
     databaseUrl: session.supabase.databaseUrl,
     jwtSecret,
     gitSource,
-    skipExplicitDeploy: gitPushed,
+    skipExplicitDeploy: false,
   })
 
   const deploymentUrl =
@@ -679,14 +686,9 @@ async function handleProvision(req: any, res: any) {
     session: updated,
     sessionToken: sealOnboardingSession(updated),
     deploymentUrl,
+    gitSynced: gitPushed,
     message:
-      deployResult.mode === 'git_webhook'
-        ? '환경변수를 저장했고, Git 푸시로 배포가 시작됐습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
-        : deployResult.mode === 'first_deploy'
-          ? ensured.recreated
-            ? '사라진 Vercel 프로젝트를 다시 만들고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
-            : '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
-          : '환경변수를 저장하고 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
+      '환경변수를 저장하고 Production 재배포를 시작했습니다. Vercel에서 Ready가 되면(보통 1~2분) 5단계로 이동하세요.',
   })
 }
 

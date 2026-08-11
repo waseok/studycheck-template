@@ -500,7 +500,13 @@ const Onboarding = () => {
           detail: `HTTP ${response.status} — 배포가 진행 중이거나 실패했을 수 있습니다. Vercel 대시보드에서 최신 배포가 Ready 인지 확인한 뒤 다시 시도해주세요.`,
         })
       } else {
-        const status = (await response.json()) as { dbConnected?: boolean; setupCompleted?: boolean }
+        const status = (await response.json()) as {
+          dbConnected?: boolean
+          setupCompleted?: boolean
+          hasDatabaseUrl?: boolean
+          reason?: string
+          dbError?: string
+        }
         items.push({ label: '학교 API 응답', state: 'ok' })
 
         if (status.dbConnected) {
@@ -516,12 +522,20 @@ const Onboarding = () => {
             items.push({ label: '학교 정보 설정', state: 'ok', detail: '설정 화면을 새 탭으로 엽니다.' })
             window.open(`${base}/setup`, '_blank', 'noopener')
           }
+        } else if (status.hasDatabaseUrl === false || status.reason === 'missing_DATABASE_URL') {
+          items.push({
+            label: '데이터베이스 연결',
+            state: 'fail',
+            detail:
+              '프로젝트 Settings에는 DATABASE_URL이 있어도, 현재 Production 배포 런타임에는 없습니다. 4단계 「Vercel 환경변수 주입 + 재배포」를 다시 실행해 env가 붙은 배포가 Ready가 될 때까지 기다린 뒤 다시 확인해주세요. (Vercel 대시보드 → Deployments → Redeploy도 동일)',
+          })
         } else {
           items.push({
             label: '데이터베이스 연결',
             state: 'fail',
             detail:
-              'DATABASE_URL 이 아직 반영되지 않았습니다. ① 4단계 배포가 끝났는지 1~2분 기다렸다가 다시 확인하고, ② 계속 안 되면 4단계 「Vercel 환경변수 주입 + 재배포」를 다시 실행해주세요.',
+              `DATABASE_URL은 있지만 DB에 연결하지 못했습니다.${status.dbError ? ` (${status.dbError})` : ''} ` +
+              'Supabase Connect → Session pooler URI(포트 5432)와 비밀번호가 맞는지 확인한 뒤, 3단계에서 URL을 다시 넣고 4단계를 재실행해주세요. Transaction pooler(6543)를 썼다면 Session pooler로 바꿔보세요.',
           })
         }
       }
