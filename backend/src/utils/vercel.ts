@@ -699,7 +699,10 @@ export async function upsertVercelEnv(
 
 /**
  * 최신 배포를 재배포하여 환경변수 적용.
- * 아직 배포가 한 번도 없으면 false를 반환합니다(에러 아님 — 이후 첫 배포 트리거용).
+ * - 배포가 없거나
+ * - 최신 배포가 ERROR 이거나
+ * - 재배포 API가 실패하면
+ * false를 반환해 호출측에서 Git 기반 새 배포로 넘어가게 합니다.
  */
 export async function redeployVercelProject(
   token: string,
@@ -708,7 +711,7 @@ export async function redeployVercelProject(
 ): Promise<boolean> {
   const listRes = await vercelFetch(
     token,
-    `/v6/deployments?projectId=${projectId}&limit=1`,
+    `/v6/deployments?projectId=${projectId}&limit=5`,
     undefined,
     teamId
   )
@@ -716,9 +719,18 @@ export async function redeployVercelProject(
     throw new Error(formatVercelApiError(await listRes.text(), 'Vercel 배포 목록 조회 실패'))
   }
 
-  const listData = (await listRes.json()) as { deployments?: Array<{ uid: string; url?: string }> }
+  const listData = (await listRes.json()) as {
+    deployments?: Array<{ uid: string; url?: string; state?: string; readyState?: string }>
+  }
   const latest = listData.deployments?.[0]
   if (!latest?.uid) {
+    return false
+  }
+
+  const state = (latest.readyState || latest.state || '').toUpperCase()
+  // 이미 실패한 배포를 재배포하면 같은 실패/권한 오류가 반복되므로 Git 신규 배포로 넘김
+  if (state === 'ERROR' || state === 'CANCELED') {
+    console.warn(`Skip redeploy of ${state} deployment ${latest.uid}`)
     return false
   }
 
@@ -729,9 +741,12 @@ export async function redeployVercelProject(
     teamId
   )
   if (!redeployRes.ok) {
-    // 재배포 API가 막히면 첫 배포 경로로 넘길 수 있게 soft false도 가능하지만,
-    // 이미 배포가 있는데 재배포만 실패한 경우는 사용자에게 알려야 함
-    throw new Error(formatVercelApiError(await redeployRes.text(), 'Vercel 재배포 실패'))
+    // 재배포 실패는 soft-fail — Git 소스 배포로 폴백
+    console.warn(
+      'Vercel redeploy soft-fail:',
+      formatVercelApiError(await redeployRes.text(), 'Vercel 재배포 실패')
+    )
+    return false
   }
   return true
 }
@@ -770,7 +785,9 @@ export function getVercelProductionUrl(projectName: string): string {
 
 /**
  * 환경변수 주입 후 재배포(또는 첫 배포)까지 한 번에 처리.
- * 온보딩 4단계에서 발생하던 주요 실패(배포 없음 / projectSettings / Git 미연결)를 여기서 흡수합니다.
+ *
+ * 중요: 온보딩 중 vercel-build.mjs 를 Git에 동기화한 뒤에는
+ * 옛 배포 재배포가 아니라 최신 Git 커밋으로 새 배포해야 합니다.
  */
 export async function applyVercelEnvAndEnsureDeploy(options: {
   token: string
@@ -780,34 +797,56 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
   databaseUrl: string
   jwtSecret: string
   gitSource?: VercelGitSource
+  /** true면 재배포를 건너뛰고 항상 Git 신규 배포 (빌드 스크립트 동기화 직후) */
+  preferFreshGitDeploy?: boolean
 }): Promise<{ deploymentUrl?: string; mode: 'redeploy' | 'first_deploy' }> {
   const { token, projectId, projectName, teamId, databaseUrl, jwtSecret } = options
   const publicUrl = getVercelProductionUrl(projectName)
 
   await ensureVercelProjectBuildSettings(token, projectId, teamId)
-  // 배포 URL(해시)이 아니라 공개 프로덕션 도메인을 쓰게, SSO 보호를 먼저 끔
   await disableVercelDeploymentProtection(token, projectId, teamId)
 
   await upsertVercelEnv(token, projectId, 'DATABASE_URL', databaseUrl, teamId)
   await upsertVercelEnv(token, projectId, 'JWT_SECRET', jwtSecret, teamId)
   await upsertVercelEnv(token, projectId, 'NODE_ENV', 'production', teamId)
 
-  const redeployed = await redeployVercelProject(token, projectId, teamId)
-  if (redeployed) {
-    return {
-      mode: 'redeploy',
-      deploymentUrl: publicUrl,
-    }
-  }
-
-  // 첫 배포: 세션 gitSource → 프로젝트 link 순으로 확보
+  // gitSource 확보 (세션 → Vercel project link)
   let gitSource = options.gitSource
   if (!gitSource) {
     gitSource = await resolveGitSourceFromVercelProject(token, projectId, teamId)
   }
+
+  // 최신 Git 커밋이 있을 때는 신규 배포 우선 (실패했던 ERROR 배포 재시도 방지)
+  if (gitSource && options.preferFreshGitDeploy !== false) {
+    try {
+      await triggerVercelDeployment({
+        token,
+        projectName,
+        projectId,
+        teamId,
+        gitSource,
+      })
+      return { mode: 'first_deploy', deploymentUrl: publicUrl }
+    } catch (error) {
+      console.warn('Fresh git deploy failed, trying redeploy fallback:', error)
+      const redeployed = await redeployVercelProject(token, projectId, teamId)
+      if (redeployed) {
+        return { mode: 'redeploy', deploymentUrl: publicUrl }
+      }
+      throw error instanceof Error
+        ? error
+        : new Error(`첫 배포를 시작하지 못했습니다. (${String(error)})`)
+    }
+  }
+
+  const redeployed = await redeployVercelProject(token, projectId, teamId)
+  if (redeployed) {
+    return { mode: 'redeploy', deploymentUrl: publicUrl }
+  }
+
   if (!gitSource) {
     throw new Error(
-      '환경변수는 저장됐지만 첫 배포를 시작하지 못했습니다. ' +
+      '환경변수는 저장됐지만 배포를 시작하지 못했습니다. ' +
         'Vercel 프로젝트에 GitHub 저장소가 연결되어 있지 않습니다. ' +
         '2단계에서 「GitHub 앱 설치 후 다시 연결」을 완료한 뒤 다시 시도하세요.'
     )
@@ -821,12 +860,7 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
     gitSource,
   })
 
-  // deployment API가 돌려주는 해시 URL은 Vercel Authentication에 막히는 경우가 많아
-  // 항상 프로덕션 별칭(*.vercel.app)을 사용자에게 안내한다.
-  return {
-    mode: 'first_deploy',
-    deploymentUrl: publicUrl,
-  }
+  return { mode: 'first_deploy', deploymentUrl: publicUrl }
 }
 
 /** @deprecated applyVercelEnvAndEnsureDeploy 사용 권장 */
