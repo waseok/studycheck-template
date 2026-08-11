@@ -161,3 +161,112 @@ export function getGitHubOAuthConfig() {
     configured: Boolean(process.env.GITHUB_CLIENT_ID),
   }
 }
+
+/** 저장소 파일 내용을 가져옵니다. 없으면 null */
+export async function getGitHubFileContent(options: {
+  token: string
+  owner: string
+  repo: string
+  path: string
+  ref?: string
+}): Promise<{ sha: string; content: string } | null> {
+  const query = options.ref ? `?ref=${encodeURIComponent(options.ref)}` : ''
+  const response = await fetch(
+    `${GITHUB_API}/repos/${options.owner}/${options.repo}/contents/${options.path}${query}`,
+    {
+      headers: {
+        Authorization: `Bearer ${options.token}`,
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'studycheck-template-onboarding',
+      },
+    }
+  )
+  if (response.status === 404) return null
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`GitHub 파일 조회 실패(${options.path}): ${text}`)
+  }
+  const data = (await response.json()) as { sha?: string; content?: string; encoding?: string }
+  if (!data.sha || !data.content) return null
+  const decoded =
+    data.encoding === 'base64'
+      ? Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8')
+      : data.content
+  return { sha: data.sha, content: decoded }
+}
+
+/** 저장소 파일을 생성하거나 덮어씁니다 */
+export async function upsertGitHubFile(options: {
+  token: string
+  owner: string
+  repo: string
+  path: string
+  content: string
+  message: string
+  branch?: string
+}): Promise<void> {
+  const existing = await getGitHubFileContent({
+    token: options.token,
+    owner: options.owner,
+    repo: options.repo,
+    path: options.path,
+    ref: options.branch,
+  })
+
+  // 내용이 동일하면 API 호출 생략
+  if (existing && existing.content.replace(/\r\n/g, '\n') === options.content.replace(/\r\n/g, '\n')) {
+    return
+  }
+
+  await githubFetch(options.token, `/repos/${options.owner}/${options.repo}/contents/${options.path}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      message: options.message,
+      content: Buffer.from(options.content, 'utf8').toString('base64'),
+      ...(existing?.sha ? { sha: existing.sha } : {}),
+      ...(options.branch ? { branch: options.branch } : {}),
+    }),
+  })
+}
+
+/**
+ * 학교 저장소의 vercel-build.mjs 가 빌드 중 db push 를 하면
+ * 기존 DB의 다른 앱 테이블(예: rankings) 때문에 배포가 실패한다.
+ * 템플릿의 최신 스크립트로 교체해 첫 배포가 통과되도록 한다.
+ */
+export async function syncVercelBuildScriptToRepo(options: {
+  token: string
+  owner: string
+  repo: string
+  branch?: string
+  scriptContent: string
+}): Promise<{ updated: boolean }> {
+  const path = 'scripts/vercel-build.mjs'
+  const existing = await getGitHubFileContent({
+    token: options.token,
+    owner: options.owner,
+    repo: options.repo,
+    path,
+    ref: options.branch,
+  })
+
+  const needsPatch =
+    !existing ||
+    /\[\s*['"]db['"]\s*,\s*['"]push['"]\s*\]/.test(existing.content) ||
+    /db\s+push/.test(existing.content)
+
+  if (!needsPatch) {
+    return { updated: false }
+  }
+
+  await upsertGitHubFile({
+    token: options.token,
+    owner: options.owner,
+    repo: options.repo,
+    path,
+    content: options.scriptContent,
+    message: 'fix: skip prisma db push during Vercel build to protect existing tables',
+    branch: options.branch,
+  })
+  return { updated: true }
+}

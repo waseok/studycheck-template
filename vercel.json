@@ -22,7 +22,7 @@
   "functions": {
     "api/onboarding-router.ts": {
       "maxDuration": 60,
-      "includeFiles": "backend/prisma/**"
+      "includeFiles": "{backend/prisma/**,scripts/vercel-build.mjs}"
     },
     "api/ping.ts": {
       "maxDuration": 10

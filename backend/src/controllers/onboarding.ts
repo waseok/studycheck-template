@@ -4,6 +4,7 @@ import {
   getGitHubOAuthConfig,
   getGitHubRepo,
   getGitHubUser,
+  syncVercelBuildScriptToRepo,
 } from '../utils/github'
 import {
   createOnboardingSession,
@@ -29,6 +30,7 @@ import {
   type VercelGitSource,
 } from '../utils/vercel'
 import { ensureDefaultSettings, pushDatabaseSchema, testDatabaseConnection } from '../utils/dbBootstrap'
+import { readTemplateVercelBuildScript } from '../utils/vercelBuildScript'
 
 const TEMPLATE_OWNER = 'waseok'
 const TEMPLATE_REPO = 'studycheck-template'
@@ -372,6 +374,21 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
       throw new Error(
         `DB 준비에 실패했습니다. Session pooler DATABASE_URL과 비밀번호를 확인하세요. (${detail})`
       )
+    }
+
+    if (session.tokens.githubToken && session.github?.owner && session.github?.repo) {
+      try {
+        const scriptContent = readTemplateVercelBuildScript()
+        await syncVercelBuildScriptToRepo({
+          token: session.tokens.githubToken,
+          owner: session.github.owner,
+          repo: session.github.repo,
+          branch: 'main',
+          scriptContent,
+        })
+      } catch (error) {
+        console.warn('School repo build script sync warning:', error)
+      }
     }
 
     let gitSource: VercelGitSource | undefined

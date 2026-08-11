@@ -9,6 +9,7 @@ import {
   getGitHubRepo,
   getGitHubUser,
   parseGitHubRepoRef,
+  syncVercelBuildScriptToRepo,
 } from '../backend/src/utils/github'
 import {
   createVercelProject,
@@ -19,6 +20,7 @@ import {
   applyVercelEnvAndEnsureDeploy,
   type VercelGitSource,
 } from '../backend/src/utils/vercel'
+import { readTemplateVercelBuildScript } from '../backend/src/utils/vercelBuildScript'
 import {
   listSupabaseOrganizations,
   listSupabaseProjects,
@@ -506,6 +508,29 @@ async function handleProvision(req: any, res: any) {
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     throw new Error(`DB 준비에 실패했습니다. Session pooler DATABASE_URL과 비밀번호를 확인하세요. (${detail})`)
+  }
+
+  // 1.5) 학교 GitHub 저장소 빌드 스크립트 보정
+  // 예전에 복제된 저장소는 빌드 중 db push 를 해 rankings 등 기존 테이블 때문에 배포가 실패한다.
+  if (session.tokens.githubToken && session.github?.owner && session.github?.repo) {
+    try {
+      const scriptContent = readTemplateVercelBuildScript()
+      const sync = await syncVercelBuildScriptToRepo({
+        token: session.tokens.githubToken,
+        owner: session.github.owner,
+        repo: session.github.repo,
+        branch: 'main',
+        scriptContent,
+      })
+      if (sync.updated) {
+        console.log(
+          `Synced vercel-build.mjs to ${session.github.owner}/${session.github.repo} (skip db push)`
+        )
+      }
+    } catch (error) {
+      console.warn('School repo build script sync warning:', error)
+      // 동기화 실패해도 배포는 시도 — 최신 템플릿 복제본이면 이미 패치됨
+    }
   }
 
   // 2) 세션의 GitHub 정보로 gitSource 준비 (없어도 Vercel link에서 재조회)
