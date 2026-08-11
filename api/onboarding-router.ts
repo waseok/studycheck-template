@@ -8,9 +8,9 @@ import {
   createRepoFromTemplate,
   getGitHubRepo,
   getGitHubUser,
+  mirrorTemplateRepoToSchool,
   parseGitHubRepoRef,
   syncSchoolRuntimeApiToRepo,
-  syncVercelBuildScriptToRepo,
 } from '../backend/src/utils/github'
 import {
   createVercelProject,
@@ -44,6 +44,55 @@ import { getBearerToken, json, readJsonBody } from './_lib/http'
 
 const TEMPLATE_OWNER = 'waseok'
 const TEMPLATE_REPO = 'studycheck-template'
+
+/**
+ * 학교 저장소를 템플릿 최신 코드와 완전히 맞춥니다 (프론트엔드 포함).
+ * 미러링(단일 커밋)이 실패하면 핵심 런타임 파일만이라도 개별 동기화합니다.
+ * @returns Git 커밋이 생겨 webhook 배포가 트리거됐는지 여부
+ */
+async function syncSchoolRepoWithTemplate(
+  githubToken: string,
+  owner: string,
+  repo: string
+): Promise<boolean> {
+  try {
+    const mirror = await mirrorTemplateRepoToSchool({
+      token: githubToken,
+      templateOwner: TEMPLATE_OWNER,
+      templateRepo: TEMPLATE_REPO,
+      owner,
+      repo,
+      branch: 'main',
+      overrides: { 'vercel.json': readSchoolVercelJson() },
+    })
+    if (mirror.updated) {
+      console.log(
+        `Mirrored template → ${owner}/${repo}: ${mirror.changedFiles.length} changed, ${mirror.deletedFiles.length} deleted`
+      )
+    }
+    return mirror.updated
+  } catch (error) {
+    console.warn(`Template mirror failed for ${owner}/${repo}, falling back to file sync:`, error)
+    try {
+      const sync = await syncSchoolRuntimeApiToRepo({
+        token: githubToken,
+        owner,
+        repo,
+        branch: 'main',
+        indexTsContent: readTemplateApiIndex(),
+        vercelJsonContent: readSchoolVercelJson(),
+        settingsStatusContent: readTemplateSettingsStatus(),
+        settingsPublicContent: readTemplateSettingsPublic(),
+        installScriptContent: readTemplateVercelInstallScript(),
+        buildScriptContent: readTemplateVercelBuildScript(),
+      })
+      return sync.updated
+    } catch (fallbackError) {
+      console.warn('School runtime API fallback sync failed:', fallbackError)
+      return false
+    }
+  }
+}
 
 function routePath(req: any): string {
   // vercel.json rewrite: /api/onboarding/(.*) → /api/onboarding-router?path=$1
@@ -142,6 +191,12 @@ async function handleGitHubRepo(req: any, res: any) {
   if (!githubToken) return json(res, 400, { error: 'GitHub 토큰을 입력해주세요.' })
 
   if (!forceRecreate && session.github?.owner && session.github?.repo && session.github?.repoUrl) {
+    // 재사용하는 저장소는 오래된 복제본일 수 있으므로 템플릿 최신 코드로 갱신
+    const synced = await syncSchoolRepoWithTemplate(
+      githubToken,
+      session.github.owner,
+      session.github.repo
+    )
     const updated = updateOnboardingSession(session, {
       status: 'GITHUB_CONNECTED',
       tokens: { githubToken },
@@ -151,7 +206,9 @@ async function handleGitHubRepo(req: any, res: any) {
       session: updated,
       sessionToken: sealOnboardingSession(updated),
       reused: true,
-      message: '이미 연결된 GitHub 저장소를 그대로 사용합니다.',
+      message: synced
+        ? '이미 연결된 저장소를 템플릿 최신 코드로 업데이트했습니다.'
+        : '이미 연결된 GitHub 저장소를 그대로 사용합니다. (이미 최신)',
     })
   }
 
@@ -160,6 +217,8 @@ async function handleGitHubRepo(req: any, res: any) {
   const user = await getGitHubUser(githubToken)
   try {
     const existing = await getGitHubRepo(githubToken, user.login, repoName)
+    // 기존 저장소가 옛날 코드일 수 있으므로 템플릿 최신 코드로 갱신
+    const synced = await syncSchoolRepoWithTemplate(githubToken, existing.owner, existing.repo)
     const updated = updateOnboardingSession(session, {
       repoName: existing.repo,
       status: 'GITHUB_CONNECTED',
@@ -176,10 +235,15 @@ async function handleGitHubRepo(req: any, res: any) {
       session: updated,
       sessionToken: sealOnboardingSession(updated),
       reused: true,
-      message: `이미 있는 저장소 ${existing.owner}/${existing.repo} 에 연결했습니다.`,
+      message: synced
+        ? `이미 있는 저장소 ${existing.owner}/${existing.repo} 를 템플릿 최신 코드로 업데이트해 연결했습니다.`
+        : `이미 있는 저장소 ${existing.owner}/${existing.repo} 에 연결했습니다. (이미 최신)`,
     })
-  } catch {
-    // create below
+  } catch (error) {
+    // 저장소가 없으면 아래에서 새로 생성. 그 외 오류(미러링 실패 등)는 로그만 남김
+    if (!(error instanceof Error && /404/.test(error.message))) {
+      console.warn('Existing repo lookup/sync warning:', error)
+    }
   }
 
   const repo = await createRepoFromTemplate({
@@ -191,24 +255,9 @@ async function handleGitHubRepo(req: any, res: any) {
     owner: user.login,
   })
 
-  // 첫 Vercel 배포 전에 학교용 vercel.json 으로 맞춤
+  // 첫 Vercel 배포 전에 학교용 vercel.json 등으로 맞춤
   // (템플릿 vercel.json 의 onboarding-router 참조가 학교 저장소에서 unmatched 오류를 냄)
-  try {
-    await syncSchoolRuntimeApiToRepo({
-      token: githubToken,
-      owner: repo.owner,
-      repo: repo.repo,
-      branch: 'main',
-      indexTsContent: readTemplateApiIndex(),
-      vercelJsonContent: readSchoolVercelJson(),
-      settingsStatusContent: readTemplateSettingsStatus(),
-      settingsPublicContent: readTemplateSettingsPublic(),
-      installScriptContent: readTemplateVercelInstallScript(),
-      buildScriptContent: readTemplateVercelBuildScript(),
-    })
-  } catch (error) {
-    console.warn('School runtime API sync after repo create:', error)
-  }
+  await syncSchoolRepoWithTemplate(githubToken, repo.owner, repo.repo)
 
   const updated = updateOnboardingSession(session, {
     repoName: repo.repo,
@@ -312,24 +361,9 @@ async function handleVercelProject(req: any, res: any) {
     String(body.projectName || session.repoName || repoRef.repo).trim()
   )
 
-  // Vercel 첫 배포 직전: 학교용 vercel.json 고정 (onboarding-router unmatched 방지)
+  // Vercel 첫 배포 직전: 템플릿 최신 코드 + 학교용 vercel.json 고정
   if (session.tokens.githubToken) {
-    try {
-      await syncSchoolRuntimeApiToRepo({
-        token: session.tokens.githubToken,
-        owner: repoRef.owner,
-        repo: repoRef.repo,
-        branch: 'main',
-        indexTsContent: readTemplateApiIndex(),
-        vercelJsonContent: readSchoolVercelJson(),
-        settingsStatusContent: readTemplateSettingsStatus(),
-        settingsPublicContent: readTemplateSettingsPublic(),
-        installScriptContent: readTemplateVercelInstallScript(),
-        buildScriptContent: readTemplateVercelBuildScript(),
-      })
-    } catch (error) {
-      console.warn('School runtime API sync before Vercel project:', error)
-    }
+    await syncSchoolRepoWithTemplate(session.tokens.githubToken, repoRef.owner, repoRef.repo)
   }
 
   const created = await createVercelProject({
@@ -580,50 +614,14 @@ async function handleProvision(req: any, res: any) {
     skipExplicitDeploy: true,
   })
 
-  // 3) 학교 GitHub 저장소 빌드/API 보정 — 커밋이 생기면 Vercel이 webhook으로 1회 배포
+  // 3) 학교 저장소를 템플릿 최신 코드로 미러링 — 커밋이 생기면 Vercel이 webhook으로 1회 배포
   let gitPushed = false
   if (session.tokens.githubToken && session.github?.owner && session.github?.repo) {
-    try {
-      const scriptContent = readTemplateVercelBuildScript()
-      const sync = await syncVercelBuildScriptToRepo({
-        token: session.tokens.githubToken,
-        owner: session.github.owner,
-        repo: session.github.repo,
-        branch: 'main',
-        scriptContent,
-      })
-      if (sync.updated) {
-        gitPushed = true
-        console.log(
-          `Synced vercel-build.mjs to ${session.github.owner}/${session.github.repo} (skip db push)`
-        )
-      }
-    } catch (error) {
-      console.warn('School repo build script sync warning:', error)
-    }
-
-    try {
-      const apiSync = await syncSchoolRuntimeApiToRepo({
-        token: session.tokens.githubToken,
-        owner: session.github.owner,
-        repo: session.github.repo,
-        branch: 'main',
-        indexTsContent: readTemplateApiIndex(),
-        vercelJsonContent: readSchoolVercelJson(),
-        settingsStatusContent: readTemplateSettingsStatus(),
-        settingsPublicContent: readTemplateSettingsPublic(),
-        installScriptContent: readTemplateVercelInstallScript(),
-        buildScriptContent: readTemplateVercelBuildScript(),
-      })
-      if (apiSync.updated) {
-        gitPushed = true
-        console.log(
-          `Synced school runtime API files to ${session.github.owner}/${session.github.repo}`
-        )
-      }
-    } catch (error) {
-      console.warn('School repo runtime API sync warning:', error)
-    }
+    gitPushed = await syncSchoolRepoWithTemplate(
+      session.tokens.githubToken,
+      session.github.owner,
+      session.github.repo
+    )
   }
 
   // 4) gitSource 준비

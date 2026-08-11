@@ -1,3 +1,5 @@
+import { createHash } from 'crypto'
+
 interface GitHubUser {
   login: string
   id: number
@@ -398,4 +400,178 @@ export async function syncSchoolRuntimeApiToRepo(options: {
   }
 
   return { updated }
+}
+
+interface GitTreeEntry {
+  path: string
+  mode: string
+  type: 'blob' | 'tree' | 'commit'
+  sha: string
+}
+
+async function getBranchHead(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<{ commitSha: string; treeSha: string }> {
+  const data = await githubFetch<{
+    commit: { sha: string; commit: { tree: { sha: string } } }
+  }>(token, `/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`)
+  return { commitSha: data.commit.sha, treeSha: data.commit.commit.tree.sha }
+}
+
+async function getRecursiveTree(
+  token: string,
+  owner: string,
+  repo: string,
+  treeSha: string
+): Promise<GitTreeEntry[]> {
+  const data = await githubFetch<{ tree: GitTreeEntry[]; truncated: boolean }>(
+    token,
+    `/repos/${owner}/${repo}/git/trees/${treeSha}?recursive=1`
+  )
+  if (data.truncated) {
+    throw new Error('저장소 파일 트리가 너무 커서 미러링할 수 없습니다.')
+  }
+  return data.tree.filter((entry) => entry.type === 'blob')
+}
+
+/** 문자열 내용의 git blob SHA-1 (변경 여부 판단용) */
+function gitBlobSha(content: string): string {
+  const body = Buffer.from(content, 'utf8')
+  return createHash('sha1').update(`blob ${body.length}\0`).update(body).digest('hex')
+}
+
+/**
+ * 템플릿 저장소의 최신 코드를 학교 저장소로 통째로 미러링합니다.
+ *
+ * 배경: 학교 저장소는 생성 시점에 한 번 복제된 뒤 재사용되므로,
+ * 템플릿에서 고친 버그(프론트엔드 포함)가 학교 사이트에 반영되지 않았습니다.
+ * Git Data API로 변경된 파일만 blob 으로 올려 단일 커밋을 만들기 때문에
+ * Vercel 배포도 1회만 트리거됩니다.
+ *
+ * @param overrides 학교 전용으로 내용이 달라야 하는 파일 (예: vercel.json)
+ */
+export async function mirrorTemplateRepoToSchool(options: {
+  token: string
+  templateOwner: string
+  templateRepo: string
+  owner: string
+  repo: string
+  branch?: string
+  overrides?: Record<string, string>
+}): Promise<{ updated: boolean; changedFiles: string[]; deletedFiles: string[] }> {
+  const branch = options.branch || 'main'
+  const overrides = options.overrides || {}
+
+  // 자기 자신에게 미러링하는 실수 방지 (템플릿 저장소 오염 금지)
+  if (
+    options.owner.toLowerCase() === options.templateOwner.toLowerCase() &&
+    options.repo.toLowerCase() === options.templateRepo.toLowerCase()
+  ) {
+    return { updated: false, changedFiles: [], deletedFiles: [] }
+  }
+
+  const [templateHead, schoolHead] = await Promise.all([
+    getBranchHead(options.token, options.templateOwner, options.templateRepo, branch),
+    getBranchHead(options.token, options.owner, options.repo, branch),
+  ])
+  const [templateTree, schoolTree] = await Promise.all([
+    getRecursiveTree(options.token, options.templateOwner, options.templateRepo, templateHead.treeSha),
+    getRecursiveTree(options.token, options.owner, options.repo, schoolHead.treeSha),
+  ])
+
+  const templateMap = new Map(templateTree.map((e) => [e.path, e]))
+  const schoolMap = new Map(schoolTree.map((e) => [e.path, e]))
+
+  // 1) 템플릿 대비 내용이 다른 파일 (override 경로는 override 내용 기준으로 비교)
+  const changed: Array<{ path: string; mode: string; templateSha?: string; content?: string }> = []
+  for (const [path, entry] of templateMap) {
+    if (path in overrides) continue
+    const school = schoolMap.get(path)
+    if (!school || school.sha !== entry.sha) {
+      changed.push({ path, mode: entry.mode, templateSha: entry.sha })
+    }
+  }
+  for (const [path, content] of Object.entries(overrides)) {
+    const school = schoolMap.get(path)
+    if (!school || school.sha !== gitBlobSha(content)) {
+      changed.push({ path, mode: schoolMap.get(path)?.mode || '100644', content })
+    }
+  }
+
+  // 2) 템플릿에 없는 학교 파일 삭제 (override 경로 제외)
+  const deleted: string[] = []
+  for (const path of schoolMap.keys()) {
+    if (!templateMap.has(path) && !(path in overrides)) deleted.push(path)
+  }
+
+  if (changed.length === 0 && deleted.length === 0) {
+    return { updated: false, changedFiles: [], deletedFiles: [] }
+  }
+
+  // 3) 변경 파일을 학교 저장소 blob 으로 생성 (동시 8개)
+  const treeEntries: Array<{ path: string; mode: string; type: 'blob'; sha: string | null }> = []
+  const queue = [...changed]
+  const workers = Array.from({ length: 8 }, async () => {
+    for (;;) {
+      const item = queue.shift()
+      if (!item) return
+      let base64: string
+      if (item.content !== undefined) {
+        base64 = Buffer.from(item.content, 'utf8').toString('base64')
+      } else {
+        const blob = await githubFetch<{ content: string }>(
+          options.token,
+          `/repos/${options.templateOwner}/${options.templateRepo}/git/blobs/${item.templateSha}`
+        )
+        base64 = blob.content.replace(/\n/g, '')
+      }
+      const created = await githubFetch<{ sha: string }>(
+        options.token,
+        `/repos/${options.owner}/${options.repo}/git/blobs`,
+        { method: 'POST', body: JSON.stringify({ content: base64, encoding: 'base64' }) }
+      )
+      treeEntries.push({ path: item.path, mode: item.mode, type: 'blob', sha: created.sha })
+    }
+  })
+  await Promise.all(workers)
+
+  for (const path of deleted) {
+    treeEntries.push({ path, mode: '100644', type: 'blob', sha: null })
+  }
+
+  // 4) 단일 트리/커밋 생성 후 브랜치 이동 → Vercel webhook 배포 1회
+  const newTree = await githubFetch<{ sha: string }>(
+    options.token,
+    `/repos/${options.owner}/${options.repo}/git/trees`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ base_tree: schoolHead.treeSha, tree: treeEntries }),
+    }
+  )
+  const commit = await githubFetch<{ sha: string }>(
+    options.token,
+    `/repos/${options.owner}/${options.repo}/git/commits`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        message: `chore: sync ${changed.length} files (+${deleted.length} removed) from template ${options.templateOwner}/${options.templateRepo}`,
+        tree: newTree.sha,
+        parents: [schoolHead.commitSha],
+      }),
+    }
+  )
+  await githubFetch(
+    options.token,
+    `/repos/${options.owner}/${options.repo}/git/refs/heads/${encodeURIComponent(branch)}`,
+    { method: 'PATCH', body: JSON.stringify({ sha: commit.sha, force: false }) }
+  )
+
+  return {
+    updated: true,
+    changedFiles: changed.map((c) => c.path),
+    deletedFiles: deleted,
+  }
 }

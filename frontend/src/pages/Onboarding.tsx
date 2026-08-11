@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { TokenGuidePanel } from '../components/onboarding/TokenGuidePanel'
 import {
   connectExistingGitHubRepo,
@@ -59,8 +58,14 @@ function loadSessionToken(): string | null {
 
 type ConfigState = Awaited<ReturnType<typeof getOnboardingConfig>>
 
+/** 5단계 진단 결과 한 줄 */
+interface SetupDiagItem {
+  label: string
+  state: 'ok' | 'fail' | 'warn'
+  detail?: string
+}
+
 const Onboarding = () => {
-  const navigate = useNavigate()
   const [config, setConfig] = useState<ConfigState | null>(null)
   const [sessionToken, setSessionToken] = useState<string | null>(loadSessionToken())
   const [session, setSession] = useState<OnboardingSession | null>(null)
@@ -98,6 +103,7 @@ const Onboarding = () => {
   const [supabaseOrganizations, setSupabaseOrganizations] = useState<Array<{ id: string; name: string }>>([])
   const [vercelGitPending, setVercelGitPending] = useState<{ installUrl: string } | null>(null)
   const [vercelGitRetrying, setVercelGitRetrying] = useState(false)
+  const [setupDiag, setSetupDiag] = useState<{ checking: boolean; items: SetupDiagItem[] } | null>(null)
   const vercelRelinkPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const vercelRelinkBusyRef = useRef(false)
   const vercelFocusHandlerRef = useRef<(() => void) | null>(null)
@@ -456,6 +462,79 @@ const Onboarding = () => {
       setSession(result.session)
       setHint(result.message || '')
     })
+  }
+
+  /**
+   * 5단계: 학교 사이트 상태를 진단하고, 준비됐으면 학교 사이트의 /setup 을 새 탭으로 엽니다.
+   * (학교 정보 설정은 이 온보딩 사이트가 아니라 "새로 배포된 학교 사이트"에서 진행합니다)
+   */
+  const handleGoToSchoolSetup = async () => {
+    const base = (session?.vercel?.deploymentUrl || '').replace(/\/+$/, '')
+    if (!base) {
+      setSetupDiag({
+        checking: false,
+        items: [
+          {
+            label: '학교 사이트 배포 주소',
+            state: 'fail',
+            detail: '4단계 배포가 아직 완료되지 않았습니다. 「Vercel 환경변수 주입 + 재배포」를 먼저 실행해주세요.',
+          },
+        ],
+      })
+      return
+    }
+
+    setSetupDiag({ checking: true, items: [] })
+    const items: SetupDiagItem[] = [{ label: '학교 사이트 배포 주소', state: 'ok', detail: base }]
+
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 15000)
+      const response = await fetch(`${base}/api/settings/status`, { signal: controller.signal })
+      clearTimeout(timer)
+
+      if (!response.ok) {
+        items.push({
+          label: '학교 API 응답',
+          state: 'fail',
+          detail: `HTTP ${response.status} — 배포가 진행 중이거나 실패했을 수 있습니다. Vercel 대시보드에서 최신 배포가 Ready 인지 확인한 뒤 다시 시도해주세요.`,
+        })
+      } else {
+        const status = (await response.json()) as { dbConnected?: boolean; setupCompleted?: boolean }
+        items.push({ label: '학교 API 응답', state: 'ok' })
+
+        if (status.dbConnected) {
+          items.push({ label: '데이터베이스 연결', state: 'ok' })
+          if (status.setupCompleted) {
+            items.push({
+              label: '학교 정보 설정',
+              state: 'warn',
+              detail: '이미 설정이 완료된 사이트입니다. 로그인 화면을 새 탭으로 엽니다.',
+            })
+            window.open(`${base}/login`, '_blank', 'noopener')
+          } else {
+            items.push({ label: '학교 정보 설정', state: 'ok', detail: '설정 화면을 새 탭으로 엽니다.' })
+            window.open(`${base}/setup`, '_blank', 'noopener')
+          }
+        } else {
+          items.push({
+            label: '데이터베이스 연결',
+            state: 'fail',
+            detail:
+              'DATABASE_URL 이 아직 반영되지 않았습니다. ① 4단계 배포가 끝났는지 1~2분 기다렸다가 다시 확인하고, ② 계속 안 되면 4단계 「Vercel 환경변수 주입 + 재배포」를 다시 실행해주세요.',
+          })
+        }
+      }
+    } catch {
+      items.push({
+        label: '학교 API 응답',
+        state: 'fail',
+        detail:
+          '응답이 없거나 시간이 초과됐습니다. 배포가 아직 진행 중일 수 있으니 1~2분 뒤 다시 시도해주세요. (예전 버전으로 배포된 사이트라면 4단계를 다시 실행해 최신 코드로 재배포해야 합니다)',
+      })
+    }
+
+    setSetupDiag({ checking: false, items })
   }
 
   if (loading) {
@@ -870,15 +949,50 @@ const Onboarding = () => {
 
           <section className="space-y-3 border-t border-gray-100 pt-6">
             <h2 className="text-xl font-bold text-gray-900">5. 학교 정보 설정</h2>
-            <p className="text-sm text-gray-600">인프라 연결이 끝나면 기존 `/setup` 화면에서 학교 이름, 비밀번호, 관리자 계정을 마무리합니다.</p>
-            <button
-              type="button"
-              onClick={() => navigate('/setup')}
-              disabled={session?.status !== 'READY_FOR_SETUP'}
-              className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              학교 정보 설정으로 이동
-            </button>
+            <p className="text-sm text-gray-600">
+              학교 정보 설정은 이 온보딩 사이트가 아니라 <strong>새로 배포된 학교 사이트</strong>에서 진행합니다.
+              아래 버튼을 누르면 학교 사이트 상태를 점검한 뒤 준비됐을 때 설정 화면을 새 탭으로 엽니다.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleGoToSchoolSetup}
+                disabled={session?.status !== 'READY_FOR_SETUP' || setupDiag?.checking}
+                className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {setupDiag?.checking ? '학교 사이트 점검 중...' : '학교 정보 설정으로 이동'}
+              </button>
+              {session?.vercel?.deploymentUrl && (
+                <a
+                  className="text-sm text-indigo-600 underline break-all"
+                  href={`${session.vercel.deploymentUrl.replace(/\/+$/, '')}/setup`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  바로 열기: {session.vercel.deploymentUrl.replace(/\/+$/, '')}/setup
+                </a>
+              )}
+            </div>
+            {setupDiag && !setupDiag.checking && setupDiag.items.length > 0 && (
+              <ul className="space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                {setupDiag.items.map((item) => (
+                  <li key={item.label} className="text-sm">
+                    <span
+                      className={
+                        item.state === 'ok'
+                          ? 'text-green-700'
+                          : item.state === 'warn'
+                            ? 'text-amber-700'
+                            : 'text-red-700'
+                      }
+                    >
+                      {item.state === 'ok' ? '✓' : item.state === 'warn' ? '△' : '✕'} {item.label}
+                    </span>
+                    {item.detail && <span className="text-gray-600"> — {item.detail}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         </div>
       </div>

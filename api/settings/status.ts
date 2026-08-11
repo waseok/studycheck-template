@@ -4,9 +4,17 @@
  * - DATABASE_URL 없음(일반화/온보딩 사이트): 즉시 needsInfra
  * - DATABASE_URL 있음(학교/테스트 사이트): 짧은 DB 핑 후 상태 반환
  */
-export default async function handler(_req: any, res: any) {
+export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json')
   res.setHeader('Cache-Control', 'no-store')
+  // 온보딩(일반화) 사이트에서 학교 사이트 상태를 진단할 수 있게 공개 CORS 허용
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204
+    res.end()
+    return
+  }
 
   const base = {
     onVercel: Boolean(process.env.VERCEL),

@@ -30,7 +30,6 @@ const SetupGate = ({ children }: { children: ReactNode }) => {
   const [dbConnected, setDbConnected] = useState(false)
   const [setupCompleted, setSetupCompleted] = useState(false)
   const [backendError, setBackendError] = useState(false)
-  const [backendErrorDetail, setBackendErrorDetail] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -46,26 +45,12 @@ const SetupGate = ({ children }: { children: ReactNode }) => {
           setupCompleted?: boolean
         }
         setBackendError(false)
-        setBackendErrorDetail('')
         setDbConnected(Boolean(status.dbConnected))
         setSetupCompleted(Boolean(status.setupCompleted))
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (cancelled) return
-        const ax = error as {
-          code?: string
-          message?: string
-          response?: { status?: number; data?: { error?: string; detail?: string } }
-        }
-        const detail =
-          ax.response?.data?.detail ||
-          ax.response?.data?.error ||
-          (ax.code === 'ECONNABORTED'
-            ? 'API 응답이 너무 오래 걸립니다. 잠시 후 다시 시도해주세요.'
-            : ax.message) ||
-          '알 수 없는 오류'
         setBackendError(true)
-        setBackendErrorDetail(String(detail))
         setDbConnected(false)
         setSetupCompleted(settings.setupCompleted)
       })

@@ -4,8 +4,8 @@ import {
   getGitHubOAuthConfig,
   getGitHubRepo,
   getGitHubUser,
+  mirrorTemplateRepoToSchool,
   syncSchoolRuntimeApiToRepo,
-  syncVercelBuildScriptToRepo,
 } from '../utils/github'
 import {
   createOnboardingSession,
@@ -403,38 +403,39 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
       skipExplicitDeploy: true,
     })
 
+    // 학교 저장소를 템플릿 최신 코드로 미러링 (실패 시 핵심 파일만 개별 동기화)
     let gitPushed = false
     if (session.tokens.githubToken && session.github?.owner && session.github?.repo) {
       try {
-        const scriptContent = readTemplateVercelBuildScript()
-        const sync = await syncVercelBuildScriptToRepo({
+        const mirror = await mirrorTemplateRepoToSchool({
           token: session.tokens.githubToken,
+          templateOwner: TEMPLATE_OWNER,
+          templateRepo: TEMPLATE_REPO,
           owner: session.github.owner,
           repo: session.github.repo,
           branch: 'main',
-          scriptContent,
+          overrides: { 'vercel.json': readSchoolVercelJson() },
         })
-        if (sync.updated) gitPushed = true
+        if (mirror.updated) gitPushed = true
       } catch (error) {
-        console.warn('School repo build script sync warning:', error)
-      }
-
-      try {
-        const apiSync = await syncSchoolRuntimeApiToRepo({
-          token: session.tokens.githubToken,
-          owner: session.github.owner,
-          repo: session.github.repo,
-          branch: 'main',
-          indexTsContent: readTemplateApiIndex(),
-          vercelJsonContent: readSchoolVercelJson(),
-          settingsStatusContent: readTemplateSettingsStatus(),
-          settingsPublicContent: readTemplateSettingsPublic(),
-          installScriptContent: readTemplateVercelInstallScript(),
-          buildScriptContent: readTemplateVercelBuildScript(),
-        })
-        if (apiSync.updated) gitPushed = true
-      } catch (error) {
-        console.warn('School repo runtime API sync warning:', error)
+        console.warn('Template mirror warning, falling back to file sync:', error)
+        try {
+          const apiSync = await syncSchoolRuntimeApiToRepo({
+            token: session.tokens.githubToken,
+            owner: session.github.owner,
+            repo: session.github.repo,
+            branch: 'main',
+            indexTsContent: readTemplateApiIndex(),
+            vercelJsonContent: readSchoolVercelJson(),
+            settingsStatusContent: readTemplateSettingsStatus(),
+            settingsPublicContent: readTemplateSettingsPublic(),
+            installScriptContent: readTemplateVercelInstallScript(),
+            buildScriptContent: readTemplateVercelBuildScript(),
+          })
+          if (apiSync.updated) gitPushed = true
+        } catch (fallbackError) {
+          console.warn('School repo runtime API sync warning:', fallbackError)
+        }
       }
     }
 

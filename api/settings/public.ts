@@ -2,9 +2,16 @@
  * GET /api/settings/public
  * Express 없이 공개 설정만 반환 (부팅/헤더용)
  */
-export default async function handler(_req: any, res: any) {
+export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json')
   res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204
+    res.end()
+    return
+  }
 
   const fallback = {
     schoolName: '연수 관리 통합 플랫폼',
