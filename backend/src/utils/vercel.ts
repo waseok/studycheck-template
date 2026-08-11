@@ -3,14 +3,23 @@ import { getGitHubRepo } from './github'
 const VERCEL_API = 'https://api.vercel.com'
 const DEFAULT_GITHUB_APP_INSTALL = 'https://github.com/apps/vercel/installations/new'
 
-/** studycheck-template 기본 빌드 설정 (첫 배포 시 projectSettings 필수) */
+/** studycheck-template 기본 빌드 설정 (첫 배포·프로젝트 설정 공통) */
 const STUDYCHECK_PROJECT_SETTINGS = {
-  framework: null,
+  framework: null as string | null,
   installCommand: 'npm install && cd backend && npm install && cd ../frontend && npm install',
   buildCommand: 'npm run vercel-build',
   outputDirectory: 'frontend/dist',
-  devCommand: null,
-} as const
+  devCommand: null as string | null,
+  nodeVersion: '20.x',
+}
+
+export type VercelGitSource = {
+  type: 'github'
+  repoId: number
+  ref?: string
+  org?: string
+  repo?: string
+}
 
 interface VercelTeam {
   id: string
@@ -79,6 +88,32 @@ function parseVercelErrorBody(text: string): {
   } catch {
     return { message: text }
   }
+}
+
+/** API 원문 JSON을 사용자용 짧은 문장으로 */
+function formatVercelApiError(text: string, fallback: string): string {
+  const parsed = parseVercelErrorBody(text)
+  const code = parsed.code || ''
+  const msg = (parsed.message || '').trim()
+
+  if (code === 'missing_project_settings') {
+    return `${fallback}: 첫 배포에 빌드 설정(projectSettings)이 필요합니다.`
+  }
+  if (code === 'repo_not_found' || isGitAppError(parsed)) {
+    return `${fallback}: Vercel GitHub 앱이 없거나 저장소 권한이 없습니다. GitHub에 Vercel 앱을 설치한 뒤 2단계를 다시 연결하세요.`
+  }
+  if (code === 'forbidden' || /forbidden|not authorized|unauthorized/i.test(msg)) {
+    return `${fallback}: Vercel 토큰 권한이 부족합니다. Full Account 범위 토큰인지 확인하세요.`
+  }
+  if (code === 'rate_limited' || /rate limit/i.test(msg)) {
+    return `${fallback}: Vercel API 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.`
+  }
+  if (msg) {
+    // 긴 JSON 대신 핵심 메시지만
+    return `${fallback}: ${msg.length > 220 ? `${msg.slice(0, 220)}…` : msg}`
+  }
+  const trimmed = text.trim()
+  return `${fallback}: ${trimmed.length > 220 ? `${trimmed.slice(0, 220)}…` : trimmed || '알 수 없는 오류'}`
 }
 
 function isGitAppError(err: { code?: string; message?: string; action?: string }): boolean {
@@ -277,7 +312,7 @@ async function tryDeployFromGit(options: {
       url: deployment.url ? `https://${deployment.url}` : undefined,
     }
   }
-  return { ok: false, error: await deployRes.text() }
+  return { ok: false, error: formatVercelApiError(await deployRes.text(), 'Git 배포 실패') }
 }
 
 async function getOrCreateBareProject(options: {
@@ -508,13 +543,7 @@ export async function triggerVercelDeployment(options: {
   projectId?: string
   teamId?: string
   /** 첫 배포에 필요. 없으면 프로젝트에 연결된 Git으로 배포 시도 */
-  gitSource?: {
-    type: 'github'
-    repoId: number
-    ref?: string
-    org?: string
-    repo?: string
-  }
+  gitSource?: VercelGitSource
 }): Promise<{ url: string }> {
   const body: Record<string, unknown> = {
     name: options.projectName,
@@ -545,8 +574,72 @@ export async function triggerVercelDeployment(options: {
     options.teamId
   )
 
-  const result = await parseVercelJson<{ url: string }>(response, 'Vercel 배포 시작 실패')
-  return result
+  if (!response.ok) {
+    throw new Error(formatVercelApiError(await response.text(), 'Vercel 배포 시작 실패'))
+  }
+  return (await response.json()) as { url: string }
+}
+
+/** 프로젝트 빌드 설정을 템플릿 값으로 맞춤 (첫 배포 실패 예방) */
+export async function ensureVercelProjectBuildSettings(
+  token: string,
+  projectId: string,
+  teamId?: string
+): Promise<void> {
+  const patchRes = await vercelFetch(
+    token,
+    `/v9/projects/${projectId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        framework: STUDYCHECK_PROJECT_SETTINGS.framework,
+        installCommand: STUDYCHECK_PROJECT_SETTINGS.installCommand,
+        buildCommand: STUDYCHECK_PROJECT_SETTINGS.buildCommand,
+        outputDirectory: STUDYCHECK_PROJECT_SETTINGS.outputDirectory,
+        devCommand: STUDYCHECK_PROJECT_SETTINGS.devCommand,
+        nodeVersion: STUDYCHECK_PROJECT_SETTINGS.nodeVersion,
+      }),
+    },
+    teamId
+  )
+  if (!patchRes.ok) {
+    // 설정 패치 실패해도 배포 payload의 projectSettings로 재시도할 수 있으므로 soft-fail
+    console.warn(
+      'Vercel project settings patch warning:',
+      formatVercelApiError(await patchRes.text(), '프로젝트 설정 업데이트 실패')
+    )
+  }
+}
+
+/** Vercel 프로젝트에 연결된 Git 정보로 gitSource 구성 */
+export async function resolveGitSourceFromVercelProject(
+  token: string,
+  projectId: string,
+  teamId?: string
+): Promise<VercelGitSource | undefined> {
+  const res = await vercelFetch(token, `/v9/projects/${projectId}`, undefined, teamId)
+  if (!res.ok) return undefined
+  const project = (await res.json()) as {
+    link?: {
+      type?: string
+      repoId?: number | string
+      org?: string
+      repo?: string
+      productionBranch?: string
+      gitCredentialId?: string
+    }
+  }
+  const link = project.link
+  if (!link || link.type !== 'github' || link.repoId == null) return undefined
+  const repoId = typeof link.repoId === 'string' ? Number(link.repoId) : link.repoId
+  if (!Number.isFinite(repoId)) return undefined
+  return {
+    type: 'github',
+    repoId,
+    ref: link.productionBranch || 'main',
+    org: link.org,
+    repo: link.repo,
+  }
 }
 
 /** Vercel 프로젝트 환경변수 생성 또는 갱신 */
@@ -559,8 +652,7 @@ export async function upsertVercelEnv(
 ): Promise<void> {
   const listRes = await vercelFetch(token, `/v9/projects/${projectId}/env`, undefined, teamId)
   if (!listRes.ok) {
-    const err = await listRes.text()
-    throw new Error(`Vercel 환경변수 조회 실패: ${err}`)
+    throw new Error(formatVercelApiError(await listRes.text(), `환경변수 조회 실패(${key})`))
   }
 
   const listData = (await listRes.json()) as { envs?: Array<{ id: string; key: string }> }
@@ -578,7 +670,7 @@ export async function upsertVercelEnv(
       teamId
     )
     if (!patchRes.ok) {
-      throw new Error(`Vercel 환경변수(${key}) 수정 실패`)
+      throw new Error(formatVercelApiError(await patchRes.text(), `환경변수 수정 실패(${key})`))
     }
     return
   }
@@ -598,8 +690,7 @@ export async function upsertVercelEnv(
     teamId
   )
   if (!createRes.ok) {
-    const err = await createRes.text()
-    throw new Error(`Vercel 환경변수(${key}) 생성 실패: ${err}`)
+    throw new Error(formatVercelApiError(await createRes.text(), `환경변수 생성 실패(${key})`))
   }
 }
 
@@ -619,30 +710,87 @@ export async function redeployVercelProject(
     teamId
   )
   if (!listRes.ok) {
-    throw new Error('Vercel 배포 목록 조회 실패')
+    throw new Error(formatVercelApiError(await listRes.text(), 'Vercel 배포 목록 조회 실패'))
   }
 
-  const listData = (await listRes.json()) as { deployments?: Array<{ uid: string }> }
-  const deploymentId = listData.deployments?.[0]?.uid
-  if (!deploymentId) {
-    // 신규 프로젝트는 배포 이력이 없음 → 재배포 대신 첫 배포가 필요
+  const listData = (await listRes.json()) as { deployments?: Array<{ uid: string; url?: string }> }
+  const latest = listData.deployments?.[0]
+  if (!latest?.uid) {
     return false
   }
 
   const redeployRes = await vercelFetch(
     token,
-    `/v13/deployments/${deploymentId}/redeploy`,
+    `/v13/deployments/${latest.uid}/redeploy`,
     { method: 'POST', body: JSON.stringify({}) },
     teamId
   )
   if (!redeployRes.ok) {
-    const err = await redeployRes.text()
-    throw new Error(`Vercel 재배포 실패: ${err}`)
+    // 재배포 API가 막히면 첫 배포 경로로 넘길 수 있게 soft false도 가능하지만,
+    // 이미 배포가 있는데 재배포만 실패한 경우는 사용자에게 알려야 함
+    throw new Error(formatVercelApiError(await redeployRes.text(), 'Vercel 재배포 실패'))
   }
   return true
 }
 
-/** DATABASE_URL, JWT_SECRET을 Vercel에 등록 후 가능하면 재배포 */
+/**
+ * 환경변수 주입 후 재배포(또는 첫 배포)까지 한 번에 처리.
+ * 온보딩 4단계에서 발생하던 주요 실패(배포 없음 / projectSettings / Git 미연결)를 여기서 흡수합니다.
+ */
+export async function applyVercelEnvAndEnsureDeploy(options: {
+  token: string
+  projectId: string
+  projectName: string
+  teamId?: string
+  databaseUrl: string
+  jwtSecret: string
+  gitSource?: VercelGitSource
+}): Promise<{ deploymentUrl?: string; mode: 'redeploy' | 'first_deploy' }> {
+  const { token, projectId, projectName, teamId, databaseUrl, jwtSecret } = options
+
+  await ensureVercelProjectBuildSettings(token, projectId, teamId)
+  await upsertVercelEnv(token, projectId, 'DATABASE_URL', databaseUrl, teamId)
+  await upsertVercelEnv(token, projectId, 'JWT_SECRET', jwtSecret, teamId)
+  await upsertVercelEnv(token, projectId, 'NODE_ENV', 'production', teamId)
+
+  const redeployed = await redeployVercelProject(token, projectId, teamId)
+  if (redeployed) {
+    return {
+      mode: 'redeploy',
+      deploymentUrl: `https://${projectName}.vercel.app`,
+    }
+  }
+
+  // 첫 배포: 세션 gitSource → 프로젝트 link 순으로 확보
+  let gitSource = options.gitSource
+  if (!gitSource) {
+    gitSource = await resolveGitSourceFromVercelProject(token, projectId, teamId)
+  }
+  if (!gitSource) {
+    throw new Error(
+      '환경변수는 저장됐지만 첫 배포를 시작하지 못했습니다. ' +
+        'Vercel 프로젝트에 GitHub 저장소가 연결되어 있지 않습니다. ' +
+        '2단계에서 「GitHub 앱 설치 후 다시 연결」을 완료한 뒤 다시 시도하세요.'
+    )
+  }
+
+  const deployment = await triggerVercelDeployment({
+    token,
+    projectName,
+    projectId,
+    teamId,
+    gitSource,
+  })
+
+  return {
+    mode: 'first_deploy',
+    deploymentUrl: deployment.url?.startsWith('http')
+      ? deployment.url
+      : `https://${deployment.url}`,
+  }
+}
+
+/** @deprecated applyVercelEnvAndEnsureDeploy 사용 권장 */
 export async function applyVercelEnvAndRedeploy(options: {
   token: string
   projectId: string

@@ -16,8 +16,8 @@ import {
   getVercelUser,
   listVercelTeams,
   sanitizeVercelProjectName,
-  applyVercelEnvAndRedeploy,
-  triggerVercelDeployment,
+  applyVercelEnvAndEnsureDeploy,
+  type VercelGitSource,
 } from '../backend/src/utils/vercel'
 import {
   listSupabaseOrganizations,
@@ -499,69 +499,53 @@ async function handleProvision(req: any, res: any) {
     return json(res, 400, { error: 'JWT_SECRET은 16자 이상이어야 합니다.' })
   }
 
-  await pushDatabaseSchema(session.supabase.databaseUrl)
-  await ensureDefaultSettings(session.supabase.databaseUrl, session.supabase.projectUrl || undefined)
-  const envResult = await applyVercelEnvAndRedeploy({
-    token: session.tokens.vercelToken,
-    projectId: session.vercel.projectId,
-    teamId: session.vercel.teamId,
-    databaseUrl: session.supabase.databaseUrl,
-    jwtSecret,
-  })
-
-  let deploymentUrl = session.vercel.deploymentUrl
+  // 1) DB 스키마/기본 설정
   try {
-    // 재배포가 안 됐으면(첫 배포 없음) Git 소스로 첫 배포를 반드시 트리거
-    let gitSource: {
-      type: 'github'
-      repoId: number
-      ref?: string
-      org?: string
-      repo?: string
-    } | undefined
+    await pushDatabaseSchema(session.supabase.databaseUrl)
+    await ensureDefaultSettings(session.supabase.databaseUrl, session.supabase.projectUrl || undefined)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`DB 준비에 실패했습니다. Session pooler DATABASE_URL과 비밀번호를 확인하세요. (${detail})`)
+  }
 
-    if (
-      !envResult.redeployed &&
-      session.tokens.githubToken &&
-      session.github?.owner &&
-      session.github?.repo
-    ) {
+  // 2) 세션의 GitHub 정보로 gitSource 준비 (없어도 Vercel link에서 재조회)
+  let gitSource: VercelGitSource | undefined
+  if (session.tokens.githubToken && session.github?.owner && session.github?.repo) {
+    try {
       const gh = await getGitHubRepo(
         session.tokens.githubToken,
         session.github.owner,
         session.github.repo
       )
-      if (!gh.id) {
-        throw new Error('GitHub 저장소 ID를 확인할 수 없습니다.')
+      if (gh.id) {
+        gitSource = {
+          type: 'github',
+          repoId: gh.id,
+          ref: gh.defaultBranch || 'main',
+          org: session.github.owner,
+          repo: session.github.repo,
+        }
       }
-      gitSource = {
-        type: 'github',
-        repoId: gh.id,
-        ref: gh.defaultBranch || 'main',
-        org: session.github.owner,
-        repo: session.github.repo,
-      }
+    } catch (error) {
+      console.warn('GitHub repo lookup for deploy:', error)
     }
-
-    const deployment = await triggerVercelDeployment({
-      token: session.tokens.vercelToken,
-      projectName: session.vercel.projectName,
-      projectId: session.vercel.projectId,
-      teamId: session.vercel.teamId,
-      gitSource,
-    })
-    deploymentUrl = `https://${deployment.url}`
-  } catch (error) {
-    console.warn('Vercel deploy trigger warning:', error)
-    if (!envResult.redeployed) {
-      // 재배포도 첫 배포도 실패하면 사용자에게 원인 노출
-      const detail = error instanceof Error ? error.message : String(error)
-      throw new Error(
-        `환경변수는 저장됐지만 첫 배포를 시작하지 못했습니다. Vercel Git 연결을 확인한 뒤 다시 시도해주세요. (${detail})`
-      )
-    }
-    deploymentUrl = deploymentUrl || `https://${session.vercel.projectName}.vercel.app`
   }
+
+  // 3) 환경변수 + 재배포/첫 배포
+  const deployResult = await applyVercelEnvAndEnsureDeploy({
+    token: session.tokens.vercelToken,
+    projectId: session.vercel.projectId,
+    projectName: session.vercel.projectName,
+    teamId: session.vercel.teamId,
+    databaseUrl: session.supabase.databaseUrl,
+    jwtSecret,
+    gitSource,
+  })
+
+  const deploymentUrl =
+    deployResult.deploymentUrl ||
+    session.vercel.deploymentUrl ||
+    `https://${session.vercel.projectName}.vercel.app`
 
   const updated = updateOnboardingSession(session, {
     status: 'READY_FOR_SETUP',
@@ -572,7 +556,10 @@ async function handleProvision(req: any, res: any) {
     session: updated,
     sessionToken: sealOnboardingSession(updated),
     deploymentUrl,
-    message: 'Vercel 환경변수 주입과 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
+    message:
+      deployResult.mode === 'first_deploy'
+        ? '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+        : '환경변수를 저장하고 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
   })
 }
 
@@ -600,9 +587,11 @@ export default async function handler(req: any, res: any) {
       hint =
         ' GitHub 토큰은 Tokens (classic) + repo 스코프를 사용하세요. Fine-grained는 템플릿 복제에서 자주 거부됩니다.'
     }
+    // 화면에서 detail만 안 보고 error만 보는 경우 대비: 핵심 원인을 error에 넣음
+    const short = `${detail}${hint}`
     return json(res, 500, {
-      error: '온보딩 요청 처리에 실패했습니다.',
-      detail: `${detail}${hint}`,
+      error: short.length > 500 ? `${short.slice(0, 500)}…` : short,
+      detail: short,
     })
   }
 }

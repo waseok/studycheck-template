@@ -9,7 +9,7 @@ export interface GitHubCreateRepoResult {
   repo: string
   repoUrl: string
   visibility: 'public' | 'private'
-  id?: number
+  id: number
   defaultBranch?: string
 }
 
@@ -118,6 +118,7 @@ export async function createRepoFromTemplate(options: {
   }
 
   const result = await githubFetch<{
+    id?: number
     owner?: { login: string }
     name?: string
     html_url?: string
@@ -138,7 +139,13 @@ export async function createRepoFromTemplate(options: {
   try {
     return await getGitHubRepo(options.token, resolvedOwner, resolvedRepo)
   } catch {
+    if (!result.id) {
+      throw new Error(
+        `GitHub 저장소(${resolvedOwner}/${resolvedRepo})는 생성됐지만 ID를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.`
+      )
+    }
     return {
+      id: result.id,
       owner: resolvedOwner,
       repo: resolvedRepo,
       repoUrl: result.html_url || `https://github.com/${resolvedOwner}/${resolvedRepo}`,

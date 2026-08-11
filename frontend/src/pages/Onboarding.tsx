@@ -335,8 +335,14 @@ const Onboarding = () => {
         err?.message || '요청을 처리하지 못했습니다.'
       )
       const detail = toErrorText(data?.detail, '')
-      setError(detail && detail !== message ? `${message}\n${detail}` : message)
-      // 에러가 화면 위쪽에만 있어 못 보는 경우 대비
+      // detail에 더 구체적인 원인이 있으면 함께/우선 표시
+      const combined =
+        detail && detail !== message
+          ? detail.length >= message.length
+            ? detail
+            : `${message}\n${detail}`
+          : message
+      setError(combined)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } finally {
       setSubmitting(false)

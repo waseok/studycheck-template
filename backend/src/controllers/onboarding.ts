@@ -21,12 +21,12 @@ import {
   listSupabaseProjects,
 } from '../utils/supabase'
 import {
-  applyVercelEnvAndRedeploy,
+  applyVercelEnvAndEnsureDeploy,
   createVercelProject,
   getVercelOAuthConfig,
   getVercelUser,
   listVercelTeams,
-  triggerVercelDeployment,
+  type VercelGitSource,
 } from '../utils/vercel'
 import { ensureDefaultSettings, pushDatabaseSchema, testDatabaseConnection } from '../utils/dbBootstrap'
 
@@ -361,70 +361,55 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
   }
 
   try {
-    await pushDatabaseSchema(session.supabase.databaseUrl)
-    await ensureDefaultSettings(
-      session.supabase.databaseUrl,
-      session.supabase.projectUrl || undefined
-    )
-    const envResult = await applyVercelEnvAndRedeploy({
-      token: session.tokens.vercelToken,
-      projectId: session.vercel.projectId,
-      teamId: session.vercel.teamId,
-      databaseUrl: session.supabase.databaseUrl,
-      jwtSecret: jwtSecret.trim(),
-    })
-
-    let deploymentUrl = session.vercel.deploymentUrl
     try {
-      let gitSource: {
-        type: 'github'
-        repoId: number
-        ref?: string
-        org?: string
-        repo?: string
-      } | undefined
+      await pushDatabaseSchema(session.supabase.databaseUrl)
+      await ensureDefaultSettings(
+        session.supabase.databaseUrl,
+        session.supabase.projectUrl || undefined
+      )
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        `DB 준비에 실패했습니다. Session pooler DATABASE_URL과 비밀번호를 확인하세요. (${detail})`
+      )
+    }
 
-      if (
-        !envResult.redeployed &&
-        session.tokens.githubToken &&
-        session.github?.owner &&
-        session.github?.repo
-      ) {
+    let gitSource: VercelGitSource | undefined
+    if (session.tokens.githubToken && session.github?.owner && session.github?.repo) {
+      try {
         const gh = await getGitHubRepo(
           session.tokens.githubToken,
           session.github.owner,
           session.github.repo
         )
-        if (!gh.id) {
-          throw new Error('GitHub 저장소 ID를 확인할 수 없습니다.')
+        if (gh.id) {
+          gitSource = {
+            type: 'github',
+            repoId: gh.id,
+            ref: gh.defaultBranch || 'main',
+            org: session.github.owner,
+            repo: session.github.repo,
+          }
         }
-        gitSource = {
-          type: 'github',
-          repoId: gh.id,
-          ref: gh.defaultBranch || 'main',
-          org: session.github.owner,
-          repo: session.github.repo,
-        }
+      } catch (error) {
+        console.warn('GitHub repo lookup for deploy:', error)
       }
-
-      const deployment = await triggerVercelDeployment({
-        token: session.tokens.vercelToken,
-        projectName: session.vercel.projectName,
-        projectId: session.vercel.projectId,
-        teamId: session.vercel.teamId,
-        gitSource,
-      })
-      deploymentUrl = `https://${deployment.url}`
-    } catch (error) {
-      console.warn('Vercel deploy trigger warning:', error)
-      if (!envResult.redeployed) {
-        const detail = error instanceof Error ? error.message : String(error)
-        throw new Error(
-          `환경변수는 저장됐지만 첫 배포를 시작하지 못했습니다. Vercel Git 연결을 확인한 뒤 다시 시도해주세요. (${detail})`
-        )
-      }
-      deploymentUrl = deploymentUrl || `https://${session.vercel.projectName}.vercel.app`
     }
+
+    const deployResult = await applyVercelEnvAndEnsureDeploy({
+      token: session.tokens.vercelToken,
+      projectId: session.vercel.projectId,
+      projectName: session.vercel.projectName,
+      teamId: session.vercel.teamId,
+      databaseUrl: session.supabase.databaseUrl,
+      jwtSecret: jwtSecret.trim(),
+      gitSource,
+    })
+
+    const deploymentUrl =
+      deployResult.deploymentUrl ||
+      session.vercel.deploymentUrl ||
+      `https://${session.vercel.projectName}.vercel.app`
 
     const updated = updateOnboardingSession(session, {
       status: 'READY_FOR_SETUP',
@@ -436,10 +421,17 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
 
     sendSession(res, updated, {
       deploymentUrl,
-      message: 'Vercel 환경변수 주입과 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
+      message:
+        deployResult.mode === 'first_deploy'
+          ? '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+          : '환경변수를 저장하고 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
     })
   } catch (error) {
     console.error('Onboarding provision error:', error)
-    res.status(500).json({ error: '인프라 연결 및 배포 자동화에 실패했습니다.' })
+    const detail = error instanceof Error ? error.message : String(error)
+    res.status(500).json({
+      error: detail.length > 500 ? `${detail.slice(0, 500)}…` : detail,
+      detail,
+    })
   }
 }
