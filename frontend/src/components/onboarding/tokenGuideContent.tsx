@@ -164,22 +164,23 @@ export const TOKEN_GUIDES: Record<TokenGuideId, TokenGuideContent> = {
   'supabase-database': {
     title: 'Supabase Session pooler DATABASE_URL',
     summary:
-      '앱이 Postgres에 연결할 주소입니다. 대시보드 상단 Connect에서 Session pooler(포트 5432) URI를 복사하세요. Direct / Transaction 은 쓰지 않습니다.',
+      '상단 Connect → Session pooler(5432) URI를 복사하세요. 좌측 Settings → Database 메뉴가 아닙니다.',
     openUrl: 'https://supabase.com/dashboard/project/_?showConnect=true&method=session',
     openLabel: 'Supabase Connect 패널 열기',
     steps: [
       'supabase.com/dashboard 에 로그인한 뒤, 연결할 프로젝트를 엽니다.',
-      '화면 상단(프로젝트 헤더)의 Connect 버튼을 클릭합니다. (좌측 Settings → Database 경로가 아닙니다.)',
-      'Connect 패널에서 Session pooler 를 선택합니다. (포트가 5432 이고 host에 pooler.supabase.com 이 들어가야 합니다.)',
-      'Direct connection / Transaction pooler(포트 6543) 는 선택하지 마세요.',
-      'Type이 URI 인 연결 문자열을 복사합니다.',
-      '문자열의 [YOUR-PASSWORD] 를 실제 DB 비밀번호로 바꾼 뒤 붙여넣습니다.',
+      '화면 맨 위(프로젝트 헤더)의 Connect 버튼을 누릅니다. ← 여기가 정답 경로입니다.',
+      '※ 좌측 사이드바 Settings → Database 로 들어가면 예전 UI라서 안내와 다릅니다. Connect 버튼을 쓰세요.',
+      'Connect 패널에서 Session pooler 를 고릅니다. 포트 5432, host에 pooler.supabase.com 이 보여야 합니다.',
+      'Direct connection / Transaction pooler(포트 6543) 는 고르지 마세요.',
+      'Type이 URI 인 문자열을 복사합니다.',
+      '문자열의 [YOUR-PASSWORD] 를 실제 DB 비밀번호로 바꾼 뒤 아래에 붙여넣습니다.',
       '비밀번호에 ! @ # 등 특수문자가 있으면 URL 인코딩(! → %21) 후 붙여넣습니다.',
     ],
     tips: [
       'URI 예: postgresql://postgres.[ref]:비밀번호@aws-0-....pooler.supabase.com:5432/postgres',
       'Project Ref는 https://[ref].supabase.co 의 [ref] 부분입니다. 프로젝트 URL을 넣으면 자동으로 채워집니다.',
-      'DB 비밀번호를 잊었다면 Connect 패널 또는 Project Settings → Database 에서 Reset database password 로 재설정할 수 있습니다.',
+      'DB 비밀번호를 잊었다면 Connect 패널의 Reset database password 로 재설정할 수 있습니다.',
     ],
     mockScreenshot: (
       <MockBrowserFrame url="supabase.com/dashboard/project/... → Connect">

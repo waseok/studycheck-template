@@ -3,11 +3,34 @@ import { TOKEN_GUIDES, TokenGuideId } from './tokenGuideContent'
 
 interface TokenGuidePanelProps {
   guideId: TokenGuideId
+  /** DATABASE_URL처럼 바로 보여줘야 하는 가이드는 true */
+  defaultOpen?: boolean
 }
 
-export function TokenGuidePanel({ guideId }: TokenGuidePanelProps) {
-  const [open, setOpen] = useState(false)
+/** 가이드 종류별로 접힘/펼침 헤더 문구를 다르게 표시 */
+const PANEL_LABELS: Record<TokenGuideId, { closed: string; open: string }> = {
+  github: {
+    closed: '처음이신가요? 토큰 발급 방법 보기',
+    open: '발급 방법 접기',
+  },
+  vercel: {
+    closed: '처음이신가요? 토큰 발급 방법 보기',
+    open: '발급 방법 접기',
+  },
+  'supabase-token': {
+    closed: '처음이신가요? 관리 토큰 발급 방법 보기',
+    open: '발급 방법 접기',
+  },
+  'supabase-database': {
+    closed: 'DATABASE_URL 어디 있나요? 연결 방법 보기',
+    open: '연결 방법 접기',
+  },
+}
+
+export function TokenGuidePanel({ guideId, defaultOpen = false }: TokenGuidePanelProps) {
+  const [open, setOpen] = useState(defaultOpen)
   const guide = TOKEN_GUIDES[guideId]
+  const labels = PANEL_LABELS[guideId]
 
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/80">
@@ -18,9 +41,7 @@ export function TokenGuidePanel({ guideId }: TokenGuidePanelProps) {
         aria-expanded={open}
       >
         <div>
-          <p className="text-sm font-semibold text-amber-950">
-            {open ? '발급 방법 접기' : '처음이신가요? 토큰 발급 방법 보기'}
-          </p>
+          <p className="text-sm font-semibold text-amber-950">{open ? labels.open : labels.closed}</p>
           {!open && <p className="mt-0.5 text-xs text-amber-900/80">{guide.summary}</p>}
         </div>
         <span className="shrink-0 text-lg text-amber-700" aria-hidden>

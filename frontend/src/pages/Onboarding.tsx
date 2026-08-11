@@ -744,7 +744,20 @@ const Onboarding = () => {
                   </p>
                 </div>
               </div>
-              <TokenGuidePanel guideId="supabase-database" />
+              {/* 접지 않아도 보이도록 핵심 경로를 항상 노출 */}
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950 space-y-1">
+                <p className="font-semibold">DATABASE_URL 복사 경로 (Settings → Database 아님)</p>
+                <p>
+                  프로젝트 화면 <span className="font-semibold">상단 Connect</span> →{' '}
+                  <span className="font-semibold">Session pooler (5432)</span> → URI 복사 →{' '}
+                  <code className="rounded bg-white/80 px-1">[YOUR-PASSWORD]</code> 를 DB 비밀번호로 교체
+                </p>
+                <p className="text-emerald-900/80">
+                  Direct / Transaction(6543) 은 사용하지 않습니다. host에 <code className="rounded bg-white/80 px-1">pooler.supabase.com</code> 이
+                  들어가야 합니다.
+                </p>
+              </div>
+              <TokenGuidePanel guideId="supabase-database" defaultOpen />
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-700">Session pooler DATABASE_URL (필수)</label>
                 <textarea
