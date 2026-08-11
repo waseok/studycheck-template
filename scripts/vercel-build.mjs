@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process'
+import { spawn, spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -14,8 +14,24 @@ function run(cmd, args, cwd, options = {}) {
   }
 }
 
-function runNpm(script, cwd) {
-  run('npm', ['run', script], cwd, { shell: process.platform === 'win32' })
+function runAsync(cmd, args, cwd, label) {
+  return new Promise((resolve, reject) => {
+    console.log(`[build] start ${label}`)
+    const child = spawn(cmd, args, {
+      cwd,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    })
+    child.on('error', reject)
+    child.on('exit', (code) => {
+      if (code === 0) {
+        console.log(`[build] done ${label}`)
+        resolve()
+      } else {
+        reject(new Error(`${label} failed (exit ${code})`))
+      }
+    })
+  })
 }
 
 const prismaEntry = path.join(backendDir, 'node_modules', 'prisma', 'build', 'index.js')
@@ -24,11 +40,10 @@ function runPrisma(args) {
   run(process.execPath, [prismaEntry, ...args], backendDir)
 }
 
+// 1) Prisma client 1회만 생성 (backend build 에서 재실행하지 않음)
 runPrisma(['generate'])
 
-// 온보딩 서버리스 함수는 Prisma CLI 없이 prisma/init.sql로 새 DB 스키마를 적용한다.
-// (backend/src/utils/dbBootstrap.ts — CREATE만 수행, 기존 테이블/데이터 유지)
-// 빌드마다 schema.prisma 기준으로 init.sql을 최신화한다.
+// 2) 온보딩용 init.sql 최신화
 const initSqlResult = spawnSync(
   process.execPath,
   [prismaEntry, 'migrate', 'diff', '--from-empty', '--to-schema-datamodel', 'prisma/schema.prisma', '--script'],
@@ -42,14 +57,21 @@ fs.writeFileSync(path.join(backendDir, 'prisma', 'init.sql'), initSqlResult.stdo
 console.log('backend/prisma/init.sql updated from schema.prisma')
 
 // 중요: 여기서 prisma db push 를 하지 않는다.
-// 학교용 프로젝트가 기존 Supabase(다른 앱 테이블 포함)를 쓰면
-// db push가 rankings 등 미사용 테이블을 삭제하려 하며 --accept-data-loss 없이 실패한다.
-// 스키마 적용은 온보딩 4단계 pushDatabaseSchema(init.sql)에서만 수행한다.
 if (process.env.DATABASE_URL) {
   console.log('DATABASE_URL detected — skip db push during build (schema is applied at onboarding provision)')
 } else {
   console.log('DATABASE_URL not set — skip db push')
 }
 
-runNpm('build', backendDir)
-runNpm('build', frontendDir)
+// 3) backend(tsc) + frontend(vite) 병렬 빌드
+//    - frontend 배포 빌드는 vite만 (tsc는 로컬 typecheck)
+//    - backend generate는 위에서 이미 수행
+try {
+  await Promise.all([
+    runAsync('npx', ['tsc'], backendDir, 'backend tsc'),
+    runAsync('npx', ['vite', 'build'], frontendDir, 'frontend vite'),
+  ])
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error)
+  process.exit(1)
+}

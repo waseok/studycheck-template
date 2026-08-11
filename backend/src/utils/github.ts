@@ -324,6 +324,9 @@ export async function syncSchoolRuntimeApiToRepo(options: {
   branch?: string
   indexTsContent: string
   vercelJsonContent: string
+  /** 병렬 install 스크립트 (없으면 생략) */
+  installScriptContent?: string
+  buildScriptContent?: string
 }): Promise<{ updated: boolean }> {
   const branch = options.branch || 'main'
   let updated = false
@@ -360,6 +363,21 @@ export async function syncSchoolRuntimeApiToRepo(options: {
     options.vercelJsonContent,
     'fix: school Vercel config (Express api/index only)'
   )
+
+  if (options.installScriptContent) {
+    await syncFile(
+      'scripts/vercel-install.mjs',
+      options.installScriptContent,
+      'fix: parallel npm install for faster Vercel builds'
+    )
+  }
+  if (options.buildScriptContent) {
+    await syncFile(
+      'scripts/vercel-build.mjs',
+      options.buildScriptContent,
+      'fix: parallel backend/frontend build; skip frontend tsc on deploy'
+    )
+  }
 
   for (const stubPath of ['api/settings/status.ts', 'api/settings/public.ts']) {
     const removed = await deleteGitHubFile({

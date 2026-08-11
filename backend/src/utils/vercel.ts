@@ -6,10 +6,8 @@ const DEFAULT_GITHUB_APP_INSTALL = 'https://github.com/apps/vercel/installations
 /** studycheck-template 기본 빌드 설정 (첫 배포·프로젝트 설정 공통) */
 const STUDYCHECK_PROJECT_SETTINGS = {
   framework: null as string | null,
-  // NODE_ENV=production 이 프로젝트 env에 있으면 npm이 devDependencies를 건너뛰므로
-  // typescript/vite 가 빠져 tsc: command not found(127) 가 난다. 빌드용으로 --include=dev 강제.
-  installCommand:
-    'npm install && cd backend && npm install --include=dev && cd ../frontend && npm install --include=dev',
+  // 병렬 install (scripts/vercel-install.mjs) — NODE_ENV=production omit 방지 포함
+  installCommand: 'node scripts/vercel-install.mjs',
   buildCommand: 'npm run vercel-build',
   outputDirectory: 'frontend/dist',
   devCommand: null as string | null,

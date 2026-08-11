@@ -28,6 +28,11 @@ export function readTemplateApiIndex(): string {
   return readCwdFile('api', 'index.ts')
 }
 
+/** 병렬 install 스크립트 */
+export function readTemplateVercelInstallScript(): string {
+  return readCwdFile('scripts', 'vercel-install.mjs')
+}
+
 /**
  * 학교 사이트용 vercel.json
  * - Express 는 api/index.ts 하나
@@ -41,8 +46,7 @@ export function readSchoolVercelJson(): string {
       version: 2,
       buildCommand: 'npm run vercel-build',
       outputDirectory: 'frontend/dist',
-      installCommand:
-        'npm install && cd backend && npm install --include=dev && cd ../frontend && npm install --include=dev',
+      installCommand: 'node scripts/vercel-install.mjs',
       framework: null,
       rewrites: [
         {

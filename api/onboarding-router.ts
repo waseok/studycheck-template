@@ -22,7 +22,7 @@ import {
   applyVercelEnvAndEnsureDeploy,
   type VercelGitSource,
 } from '../backend/src/utils/vercel'
-import { readTemplateApiIndex, readTemplateVercelBuildScript, readSchoolVercelJson } from '../backend/src/utils/vercelBuildScript'
+import { readTemplateApiIndex, readTemplateVercelBuildScript, readSchoolVercelJson, readTemplateVercelInstallScript } from '../backend/src/utils/vercelBuildScript'
 import {
   listSupabaseOrganizations,
   listSupabaseProjects,
@@ -201,6 +201,8 @@ async function handleGitHubRepo(req: any, res: any) {
       branch: 'main',
       indexTsContent: readTemplateApiIndex(),
       vercelJsonContent: readSchoolVercelJson(),
+      installScriptContent: readTemplateVercelInstallScript(),
+      buildScriptContent: readTemplateVercelBuildScript(),
     })
   } catch (error) {
     console.warn('School runtime API sync after repo create:', error)
@@ -318,6 +320,8 @@ async function handleVercelProject(req: any, res: any) {
         branch: 'main',
         indexTsContent: readTemplateApiIndex(),
         vercelJsonContent: readSchoolVercelJson(),
+        installScriptContent: readTemplateVercelInstallScript(),
+        buildScriptContent: readTemplateVercelBuildScript(),
       })
     } catch (error) {
       console.warn('School runtime API sync before Vercel project:', error)
@@ -602,6 +606,8 @@ async function handleProvision(req: any, res: any) {
         branch: 'main',
         indexTsContent: readTemplateApiIndex(),
         vercelJsonContent: readSchoolVercelJson(),
+        installScriptContent: readTemplateVercelInstallScript(),
+        buildScriptContent: readTemplateVercelBuildScript(),
       })
       if (apiSync.updated) {
         gitPushed = true

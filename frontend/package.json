@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx tsc && vite build",
-    "build:analyze": "npx tsc && cross-env ANALYZE=true vite build",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "build:analyze": "tsc && cross-env ANALYZE=true vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
