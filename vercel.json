@@ -12,35 +12,20 @@
     }
   ],
   "functions": {
-    "api/onboarding/github/repo.ts": {
+    "api/onboarding/[...path].ts": {
       "maxDuration": 60
     },
-    "api/onboarding/github/connect.ts": {
-      "maxDuration": 30
+    "api/ping.ts": {
+      "maxDuration": 10
     },
-    "api/onboarding/vercel/project.ts": {
-      "maxDuration": 60
+    "api/health.ts": {
+      "maxDuration": 10
     },
-    "api/onboarding/vercel/link.ts": {
-      "maxDuration": 60
+    "api/settings/status.ts": {
+      "maxDuration": 15
     },
-    "api/onboarding/vercel/teams.ts": {
-      "maxDuration": 30
-    },
-    "api/onboarding/session.ts": {
-      "maxDuration": 30
-    },
-    "api/onboarding/supabase/resources.ts": {
-      "maxDuration": 30
-    },
-    "api/onboarding/supabase/project.ts": {
-      "maxDuration": 60
-    },
-    "api/onboarding/supabase/connect.ts": {
-      "maxDuration": 30
-    },
-    "api/onboarding/provision.ts": {
-      "maxDuration": 60
+    "api/settings/public.ts": {
+      "maxDuration": 15
     }
   }
 }
