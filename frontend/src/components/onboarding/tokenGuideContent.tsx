@@ -65,7 +65,10 @@ export const TOKEN_GUIDES: Record<TokenGuideId, TokenGuideContent> = {
     ],
     tips: [
       '토큰은 다시 볼 수 없으니, 발급 직후 반드시 복사해 두세요.',
-      'Fine-grained token 대신 classic token + repo 권한을 권장합니다.',
+      '반드시 Tokens (classic) 을 쓰세요. Fine-grained 는 템플릿 복제에서 403이 자주 납니다.',
+      '토큰이 ghp_ 로 시작하면 classic, github_pat_ 로 시작하면 fine-grained 입니다.',
+      'repo 권한을 통째로 체크해야 합니다. (metadata만/public_repo만이면 실패)',
+      '403 Resource not accessible by personal access token → 권한 부족입니다. classic + repo 로 다시 발급하세요.',
     ],
     mockScreenshot: (
       <MockBrowserFrame url="github.com/settings/tokens/new">

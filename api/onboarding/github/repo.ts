@@ -61,9 +61,13 @@ export default async function handler(req: any, res: any) {
     })
   } catch (error) {
     console.error('onboarding/github/repo error:', error)
+    const detail = error instanceof Error ? error.message : String(error)
+    const hint = /403|not accessible by personal access token/i.test(detail)
+      ? ' GitHub 토큰 권한 문제입니다. Tokens (classic) 으로 다시 만들고 repo 스코프를 모두 체크한 뒤(토큰이 ghp_ 로 시작하는지 확인) 다시 시도하세요. Fine-grained(github_pat_)는 템플릿 복제에서 자주 거부됩니다.'
+      : ''
     return json(res, 500, {
       error: 'GitHub 템플릿 저장소 생성에 실패했습니다.',
-      detail: error instanceof Error ? error.message : String(error),
+      detail: `${detail}${hint}`,
     })
   }
 }
