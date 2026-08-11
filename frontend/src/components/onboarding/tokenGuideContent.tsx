@@ -111,7 +111,7 @@ export const TOKEN_GUIDES: Record<TokenGuideId, TokenGuideContent> = {
       'Scope는 Full Account(또는 프로젝트 생성·환경변수 수정이 가능한 범위)를 선택합니다.',
       'Create 를 누른 뒤 표시되는 토큰을 복사해 아래 입력란에 붙여넣습니다.',
     ],
-    tips: ['팀(Team) 계정을 쓰는 경우, 토큰 발급 후 「팀 목록 불러오기」로 팀을 선택할 수 있습니다.'],
+    tips: ['팀(Team) 계정을 쓰는 경우, 토큰 발급 후 「팀 목록 불러오기」로 팀을 선택할 수 있습니다.', '토큰을 만든 Vercel 계정에서 GitHub 로그인이 연결되어 있어야 새 GitHub 저장소를 프로젝트가 붙습니다. (vercel.com → Account Settings → Login Connections)'],
     mockScreenshot: (
       <MockBrowserFrame url="vercel.com/account/settings/tokens">
         <div className="space-y-3">

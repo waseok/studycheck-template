@@ -37,9 +37,25 @@ async function parseVercelJson<T>(response: Response, fallbackMessage: string): 
   return response.json() as Promise<T>
 }
 
+/** Vercel 프로젝트명 규칙: 소문자/숫자/하이픈만 */
+export function sanitizeVercelProjectName(input: string): string {
+  const normalized = input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  return (normalized || 'studycheck-app').slice(0, 100)
+}
+
 export async function getVercelUser(token: string): Promise<VercelUser> {
   const response = await vercelFetch(token, '/v2/user')
-  return parseVercelJson<VercelUser>(response, 'Vercel 사용자 조회 실패')
+  const payload = await parseVercelJson<{ user?: VercelUser } & VercelUser>(
+    response,
+    'Vercel 사용자 조회 실패'
+  )
+  // /v2/user 는 { user: {...} } 형태인 경우가 많음
+  return payload.user || payload
 }
 
 export async function listVercelTeams(token: string): Promise<VercelTeam[]> {
@@ -54,26 +70,61 @@ export async function createVercelProject(options: {
   repo: string
   repoId?: number
   teamId?: string
-}): Promise<{ id: string; name: string }> {
-  const response = await vercelFetch(
+}): Promise<{ id: string; name: string; gitLinked: boolean; warning?: string }> {
+  const name = sanitizeVercelProjectName(options.projectName)
+
+  // 1) GitHub 저장소까지 한번에 연결 시도
+  const withGit = await vercelFetch(
     options.token,
-    '/v10/projects',
+    '/v11/projects',
     {
       method: 'POST',
       body: JSON.stringify({
-        name: options.projectName,
-        framework: null,
+        name,
         gitRepository: {
           type: 'github',
           repo: options.repo,
-          repoId: options.repoId,
         },
       }),
     },
     options.teamId
   )
 
-  return parseVercelJson<{ id: string; name: string }>(response, 'Vercel 프로젝트 생성 실패')
+  if (withGit.ok) {
+    const created = (await withGit.json()) as { id: string; name: string }
+    return { id: created.id, name: created.name, gitLinked: true }
+  }
+
+  const gitError = await withGit.text()
+
+  // 2) Git 연결 실패 시(통합 미설치 등) 빈 프로젝트라도 생성
+  const withoutGit = await vercelFetch(
+    options.token,
+    '/v11/projects',
+    {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    },
+    options.teamId
+  )
+
+  if (!withoutGit.ok) {
+    const text = await withoutGit.text()
+    throw new Error(
+      `Vercel 프로젝트 생성 실패: ${text} (GitHub 연결 시도 오류: ${gitError}). ` +
+        'Vercel 대시보드에서 GitHub 계정을 연결(Import Git Repository)한 뒤 다시 시도하세요.'
+    )
+  }
+
+  const created = (await withoutGit.json()) as { id: string; name: string }
+  return {
+    id: created.id,
+    name: created.name,
+    gitLinked: false,
+    warning:
+      `프로젝트는 생성됐지만 GitHub 저장소(${options.repo}) 자동 연결에 실패했습니다. ` +
+      `Vercel → Project → Settings → Git 에서 저장소를 직접 연결하세요. 원인: ${gitError}`,
+  }
 }
 
 export async function triggerVercelDeployment(options: {

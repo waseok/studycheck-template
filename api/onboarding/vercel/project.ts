@@ -47,12 +47,19 @@ export default async function handler(req: any, res: any) {
       success: true,
       session: updated,
       sessionToken: sealOnboardingSession(updated),
+      gitLinked: created.gitLinked,
+      message: created.warning || 'Vercel 프로젝트 연결 완료',
+      hint: created.warning,
     })
   } catch (error) {
     console.error('onboarding/vercel/project error:', error)
+    const detail = error instanceof Error ? error.message : String(error)
+    const hint = /github|gitRepository|repository/i.test(detail)
+      ? ' Vercel 계정에 GitHub가 연결되어 있는지 확인하세요. (vercel.com → Settings → Login Connections / Install GitHub)'
+      : ''
     return json(res, 500, {
       error: 'Vercel 프로젝트 생성에 실패했습니다.',
-      detail: error instanceof Error ? error.message : String(error),
+      detail: `${detail}${hint}`,
     })
   }
 }

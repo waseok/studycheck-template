@@ -166,6 +166,8 @@ const Onboarding = () => {
       )
       const detail = toErrorText(data?.detail, '')
       setError(detail && detail !== message ? `${message}\n${detail}` : message)
+      // 에러가 화면 위쪽에만 있어 못 보는 경우 대비
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } finally {
       setSubmitting(false)
     }
@@ -194,6 +196,17 @@ const Onboarding = () => {
   }
 
   const handleVercel = async () => {
+    if (!session?.github?.repo) {
+      setError('먼저 1단계 GitHub 저장소 생성을 완료해주세요.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (!vercelForm.vercelToken.trim()) {
+      setError('Vercel 토큰을 입력해주세요.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
     await withSubmit(async (token) => {
       const result = await connectVercelProject(token, {
         vercelToken: vercelForm.vercelToken.trim(),
@@ -203,6 +216,9 @@ const Onboarding = () => {
       persistSessionToken(result.sessionToken)
       setSessionToken(result.sessionToken)
       setSession(result.session)
+      if (result.hint || result.message) {
+        setHint(result.hint || result.message || '')
+      }
     })
   }
 
@@ -413,13 +429,32 @@ const Onboarding = () => {
             <input
               value={vercelForm.projectName}
               onChange={(e) => setVercelForm((prev) => ({ ...prev, projectName: e.target.value }))}
-              placeholder="Vercel 프로젝트 이름"
+              placeholder="Vercel 프로젝트 이름 (소문자/숫자/하이픈)"
               className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
             />
-            <button type="button" onClick={handleVercel} disabled={submitting || !session?.github?.repo || !vercelForm.vercelToken.trim()} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-              {submitting ? '생성 중...' : 'Vercel 프로젝트 생성'}
+            <p className="text-xs text-gray-500">
+              프로젝트 이름은 자동으로 소문자·하이픈 형식으로 정리됩니다. Vercel 계정에 GitHub가 연결되어 있어야 저장소가 붙습니다.
+            </p>
+            <button
+              type="button"
+              onClick={handleVercel}
+              disabled={submitting}
+              className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {submitting ? '생성 중... (최대 1분)' : 'Vercel 프로젝트 생성'}
             </button>
-            {session?.vercel?.projectId && <p className="text-sm text-green-700">✓ Vercel 프로젝트 연결 완료: {session.vercel.projectName}</p>}
+            {(!session?.github?.repo || !vercelForm.vercelToken.trim()) && (
+              <p className="text-xs text-amber-700">
+                {!session?.github?.repo
+                  ? '아직 GitHub 저장소 생성이 완료되지 않았습니다.'
+                  : 'Vercel 토큰을 입력한 뒤 버튼을 눌러주세요.'}
+              </p>
+            )}
+            {session?.vercel?.projectId && (
+              <p className="text-sm text-green-700">
+                ✓ Vercel 프로젝트 연결 완료: {session.vercel.projectName}
+              </p>
+            )}
           </section>
 
           <section className="space-y-3 border-t border-gray-100 pt-6">

@@ -116,11 +116,9 @@ export async function connectVercelProject(
   sessionToken: string,
   payload: { vercelToken: string; teamId?: string; projectName?: string }
 ) {
-  const response = await apiClient.post<SessionResponse>(
-    '/onboarding/vercel/project',
-    payload,
-    withSessionToken(sessionToken)
-  )
+  const response = await apiClient.post<
+    SessionResponse & { gitLinked?: boolean; hint?: string; message?: string }
+  >('/onboarding/vercel/project', payload, withSessionToken(sessionToken))
   return response.data
 }
 
