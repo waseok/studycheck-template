@@ -22,7 +22,7 @@ import {
   applyVercelEnvAndEnsureDeploy,
   type VercelGitSource,
 } from '../backend/src/utils/vercel'
-import { readTemplateApiIndex, readTemplateVercelBuildScript, readSchoolVercelJson, readTemplateVercelInstallScript } from '../backend/src/utils/vercelBuildScript'
+import { readTemplateApiIndex, readTemplateVercelBuildScript, readSchoolVercelJson, readTemplateVercelInstallScript, readTemplateSettingsStatus, readTemplateSettingsPublic } from '../backend/src/utils/vercelBuildScript'
 import {
   listSupabaseOrganizations,
   listSupabaseProjects,
@@ -201,6 +201,8 @@ async function handleGitHubRepo(req: any, res: any) {
       branch: 'main',
       indexTsContent: readTemplateApiIndex(),
       vercelJsonContent: readSchoolVercelJson(),
+      settingsStatusContent: readTemplateSettingsStatus(),
+      settingsPublicContent: readTemplateSettingsPublic(),
       installScriptContent: readTemplateVercelInstallScript(),
       buildScriptContent: readTemplateVercelBuildScript(),
     })
@@ -320,6 +322,8 @@ async function handleVercelProject(req: any, res: any) {
         branch: 'main',
         indexTsContent: readTemplateApiIndex(),
         vercelJsonContent: readSchoolVercelJson(),
+        settingsStatusContent: readTemplateSettingsStatus(),
+        settingsPublicContent: readTemplateSettingsPublic(),
         installScriptContent: readTemplateVercelInstallScript(),
         buildScriptContent: readTemplateVercelBuildScript(),
       })
@@ -606,6 +610,8 @@ async function handleProvision(req: any, res: any) {
         branch: 'main',
         indexTsContent: readTemplateApiIndex(),
         vercelJsonContent: readSchoolVercelJson(),
+        settingsStatusContent: readTemplateSettingsStatus(),
+        settingsPublicContent: readTemplateSettingsPublic(),
         installScriptContent: readTemplateVercelInstallScript(),
         buildScriptContent: readTemplateVercelBuildScript(),
       })

@@ -314,8 +314,7 @@ export async function deleteGitHubFile(options: {
 }
 
 /**
- * 학교 저장소에 Express API 진입점(api/index)과 vercel.json 을 맞추고,
- * dbConnected 를 항상 false 로 돌리던 settings stub 파일을 제거합니다.
+ * 학교 저장소에 Express API 진입점·경량 settings 게이트·vercel.json 을 맞춥니다.
  */
 export async function syncSchoolRuntimeApiToRepo(options: {
   token: string
@@ -324,6 +323,10 @@ export async function syncSchoolRuntimeApiToRepo(options: {
   branch?: string
   indexTsContent: string
   vercelJsonContent: string
+  /** 경량 GET /api/settings/status (없으면 생략) */
+  settingsStatusContent?: string
+  /** 경량 GET /api/settings/public (없으면 생략) */
+  settingsPublicContent?: string
   /** 병렬 install 스크립트 (없으면 생략) */
   installScriptContent?: string
   buildScriptContent?: string
@@ -361,8 +364,23 @@ export async function syncSchoolRuntimeApiToRepo(options: {
   await syncFile(
     'vercel.json',
     options.vercelJsonContent,
-    'fix: school Vercel config (Express api/index only)'
+    'fix: school Vercel config (Express + lightweight settings gate)'
   )
+
+  if (options.settingsStatusContent) {
+    await syncFile(
+      'api/settings/status.ts',
+      options.settingsStatusContent,
+      'fix: lightweight /api/settings/status for fast SetupGate'
+    )
+  }
+  if (options.settingsPublicContent) {
+    await syncFile(
+      'api/settings/public.ts',
+      options.settingsPublicContent,
+      'fix: lightweight /api/settings/public without full Express boot'
+    )
+  }
 
   if (options.installScriptContent) {
     await syncFile(
@@ -377,18 +395,6 @@ export async function syncSchoolRuntimeApiToRepo(options: {
       options.buildScriptContent,
       'fix: parallel backend/frontend build; skip frontend tsc on deploy'
     )
-  }
-
-  for (const stubPath of ['api/settings/status.ts', 'api/settings/public.ts']) {
-    const removed = await deleteGitHubFile({
-      token: options.token,
-      owner: options.owner,
-      repo: options.repo,
-      path: stubPath,
-      message: `fix: remove stub ${stubPath} that forced onboarding forever`,
-      branch,
-    })
-    if (removed) updated = true
   }
 
   return { updated }

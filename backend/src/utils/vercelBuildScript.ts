@@ -33,13 +33,24 @@ export function readTemplateVercelInstallScript(): string {
   return readCwdFile('scripts', 'vercel-install.mjs')
 }
 
+/** 경량 SetupGate용 settings API */
+export function readTemplateSettingsStatus(): string {
+  return readCwdFile('api', 'settings', 'status.ts')
+}
+
+export function readTemplateSettingsPublic(): string {
+  return readCwdFile('api', 'settings', 'public.ts')
+}
+
 /**
  * 학교 사이트용 vercel.json
- * - Express 는 api/index.ts 하나
- * - /api/* 는 __path 로 원본 경로를 넘겨야 타임아웃이 안 남
+ * - settings/status·public 은 Express 없이 경량 함수
+ * - 그 외 /api/* 는 Express(api/index) + __path
  * - onboarding-router 는 functions 에 넣지 않음 (파일 없으면 unmatched 오류)
  */
 export function readSchoolVercelJson(): string {
+  const prismaIncludes =
+    '{backend/prisma/**,backend/node_modules/.prisma/**,backend/node_modules/@prisma/client/**}'
   return `${JSON.stringify(
     {
       $schema: 'https://openapi.vercel.sh/vercel.json',
@@ -49,6 +60,15 @@ export function readSchoolVercelJson(): string {
       installCommand: 'node scripts/vercel-install.mjs',
       framework: null,
       rewrites: [
+        // settings/* 파일 라우트가 catch-all 보다 우선되도록 명시
+        {
+          source: '/api/settings/status',
+          destination: '/api/settings/status',
+        },
+        {
+          source: '/api/settings/public',
+          destination: '/api/settings/public',
+        },
         {
           source: '/api/(.*)',
           destination: '/api?__path=$1',
@@ -61,8 +81,15 @@ export function readSchoolVercelJson(): string {
       functions: {
         'api/index.ts': {
           maxDuration: 60,
-          includeFiles:
-            '{backend/prisma/**,backend/node_modules/.prisma/**,backend/node_modules/@prisma/client/**}',
+          includeFiles: prismaIncludes,
+        },
+        'api/settings/status.ts': {
+          maxDuration: 15,
+          includeFiles: prismaIncludes,
+        },
+        'api/settings/public.ts': {
+          maxDuration: 15,
+          includeFiles: prismaIncludes,
         },
       },
     },

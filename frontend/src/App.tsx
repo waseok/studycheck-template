@@ -34,8 +34,8 @@ const SetupGate = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let cancelled = false
-    // Hobby 콜드스타트(Express+Prisma)를 고려해 충분히 기다림
-    const timeoutMs = 45000
+    // 경량 /api/settings/status 기준 (Express 전체 기동 불필요)
+    const timeoutMs = 15000
 
     apiClient
       .get('/settings/status', { timeout: timeoutMs })
@@ -88,42 +88,9 @@ const SetupGate = ({ children }: { children: ReactNode }) => {
   }
 
   if (backendError) {
-    // 온보딩은 API 복구/설정이 필요한 화면이므로 진입은 허용한다
+    // 일반화(온보딩) 사이트는 API 게이트가 실패해도 온보딩으로 들어가게 한다
     if (location.pathname !== '/onboarding') {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-          <div className="max-w-lg w-full bg-white border border-red-200 rounded-2xl shadow-lg p-6 text-center">
-            <div className="text-4xl mb-3">⚠️</div>
-            <h1 className="text-xl font-bold text-gray-900 mb-2">API 서버에 연결할 수 없습니다</h1>
-            <p className="text-sm text-gray-600 mb-2">
-              배포 직후라면 잠시 후 다시 시도해주세요. 계속되면 아래 원인을 확인하세요.
-            </p>
-            {backendErrorDetail ? (
-              <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4 break-all text-left">
-                {backendErrorDetail}
-              </p>
-            ) : null}
-            <div className="flex flex-col sm:flex-row gap-2 justify-center">
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
-              >
-                다시 시도
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = '/setup'
-                }}
-                className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
-              >
-                설정 화면으로
-              </button>
-            </div>
-          </div>
-        </div>
-      )
+      return <Navigate to="/onboarding" replace />
     }
   }
 

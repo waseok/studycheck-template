@@ -15,6 +15,14 @@
       "destination": "/api/onboarding-router"
     },
     {
+      "source": "/api/settings/status",
+      "destination": "/api/settings/status"
+    },
+    {
+      "source": "/api/settings/public",
+      "destination": "/api/settings/public"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api?__path=$1"
     },
@@ -31,6 +39,14 @@
     "api/onboarding-router.ts": {
       "maxDuration": 60,
       "includeFiles": "{backend/prisma/**,scripts/vercel-build.mjs,scripts/vercel-install.mjs,api/index.ts,vercel.json}"
+    },
+    "api/settings/status.ts": {
+      "maxDuration": 15,
+      "includeFiles": "{backend/prisma/**,backend/node_modules/.prisma/**,backend/node_modules/@prisma/client/**}"
+    },
+    "api/settings/public.ts": {
+      "maxDuration": 15,
+      "includeFiles": "{backend/prisma/**,backend/node_modules/.prisma/**,backend/node_modules/@prisma/client/**}"
     },
     "api/ping.ts": {
       "maxDuration": 10
