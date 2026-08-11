@@ -32,7 +32,7 @@ import {
   type VercelGitSource,
 } from '../utils/vercel'
 import { ensureDefaultSettings, pushDatabaseSchema, testDatabaseConnection } from '../utils/dbBootstrap'
-import { readTemplateApiIndex, readTemplateVercelBuildScript, readTemplateVercelJson } from '../utils/vercelBuildScript'
+import { readTemplateApiIndex, readTemplateVercelBuildScript, readSchoolVercelJson } from '../utils/vercelBuildScript'
 
 const TEMPLATE_OWNER = 'waseok'
 const TEMPLATE_REPO = 'studycheck-template'
@@ -413,7 +413,7 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
           repo: session.github.repo,
           branch: 'main',
           indexTsContent: readTemplateApiIndex(),
-          vercelJsonContent: readTemplateVercelJson(),
+          vercelJsonContent: readSchoolVercelJson(),
         })
       } catch (error) {
         console.warn('School repo runtime API sync warning:', error)

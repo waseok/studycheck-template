@@ -22,7 +22,7 @@ import {
   applyVercelEnvAndEnsureDeploy,
   type VercelGitSource,
 } from '../backend/src/utils/vercel'
-import { readTemplateApiIndex, readTemplateVercelBuildScript, readTemplateVercelJson } from '../backend/src/utils/vercelBuildScript'
+import { readTemplateApiIndex, readTemplateVercelBuildScript, readSchoolVercelJson } from '../backend/src/utils/vercelBuildScript'
 import {
   listSupabaseOrganizations,
   listSupabaseProjects,
@@ -190,6 +190,22 @@ async function handleGitHubRepo(req: any, res: any) {
     visibility,
     owner: user.login,
   })
+
+  // 첫 Vercel 배포 전에 학교용 vercel.json 으로 맞춤
+  // (템플릿 vercel.json 의 onboarding-router 참조가 학교 저장소에서 unmatched 오류를 냄)
+  try {
+    await syncSchoolRuntimeApiToRepo({
+      token: githubToken,
+      owner: repo.owner,
+      repo: repo.repo,
+      branch: 'main',
+      indexTsContent: readTemplateApiIndex(),
+      vercelJsonContent: readSchoolVercelJson(),
+    })
+  } catch (error) {
+    console.warn('School runtime API sync after repo create:', error)
+  }
+
   const updated = updateOnboardingSession(session, {
     repoName: repo.repo,
     status: 'GITHUB_CONNECTED',
@@ -291,6 +307,23 @@ async function handleVercelProject(req: any, res: any) {
   const projectName = sanitizeVercelProjectName(
     String(body.projectName || session.repoName || repoRef.repo).trim()
   )
+
+  // Vercel 첫 배포 직전: 학교용 vercel.json 고정 (onboarding-router unmatched 방지)
+  if (session.tokens.githubToken) {
+    try {
+      await syncSchoolRuntimeApiToRepo({
+        token: session.tokens.githubToken,
+        owner: repoRef.owner,
+        repo: repoRef.repo,
+        branch: 'main',
+        indexTsContent: readTemplateApiIndex(),
+        vercelJsonContent: readSchoolVercelJson(),
+      })
+    } catch (error) {
+      console.warn('School runtime API sync before Vercel project:', error)
+    }
+  }
+
   const created = await createVercelProject({
     token,
     githubToken: session.tokens.githubToken,
@@ -557,7 +590,7 @@ async function handleProvision(req: any, res: any) {
         repo: session.github.repo,
         branch: 'main',
         indexTsContent: readTemplateApiIndex(),
-        vercelJsonContent: readTemplateVercelJson(),
+        vercelJsonContent: readSchoolVercelJson(),
       })
       if (apiSync.updated) {
         console.log(

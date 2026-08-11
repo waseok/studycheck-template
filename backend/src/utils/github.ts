@@ -358,7 +358,7 @@ export async function syncSchoolRuntimeApiToRepo(options: {
   await syncFile(
     'vercel.json',
     options.vercelJsonContent,
-    'fix: route /api/* to Express while keeping onboarding-router'
+    'fix: school Vercel config (Express api/index only)'
   )
 
   for (const stubPath of ['api/settings/status.ts', 'api/settings/public.ts']) {
