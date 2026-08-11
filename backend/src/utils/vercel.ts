@@ -929,8 +929,8 @@ export function getVercelProductionUrl(projectName: string): string {
 /**
  * 환경변수 주입 후 재배포(또는 첫 배포)까지 한 번에 처리.
  *
- * 중요: 온보딩 중 vercel-build.mjs 를 Git에 동기화한 뒤에는
- * 옛 배포 재배포가 아니라 최신 Git 커밋으로 새 배포해야 합니다.
+ * @param skipExplicitDeploy GitHub push로 Vercel 자동 배포가 이미 걸린 경우 true.
+ *   (파일 동기화 직후 다시 triggerDeploy 하면 배포가 2번 뜸)
  */
 export async function applyVercelEnvAndEnsureDeploy(options: {
   token: string
@@ -942,7 +942,12 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
   gitSource?: VercelGitSource
   /** true면 재배포를 건너뛰고 항상 Git 신규 배포 (빌드 스크립트 동기화 직후) */
   preferFreshGitDeploy?: boolean
-}): Promise<{ deploymentUrl?: string; mode: 'redeploy' | 'first_deploy' }> {
+  /** GitHub 커밋으로 webhook 배포가 예약된 경우 수동 배포 트리거 생략 */
+  skipExplicitDeploy?: boolean
+}): Promise<{
+  deploymentUrl?: string
+  mode: 'redeploy' | 'first_deploy' | 'git_webhook'
+}> {
   const { token, projectId, projectName, teamId, databaseUrl, jwtSecret } = options
   const publicUrl = getVercelProductionUrl(projectName)
 
@@ -955,6 +960,11 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
   // typescript(devDependency)를 건너뛰어 tsc: command not found 가 난다.
   // 런타임 NODE_ENV는 Vercel이 배포 시 알아서 설정하므로 여기서는 제거만 한다.
   await deleteVercelEnv(token, projectId, 'NODE_ENV', teamId)
+
+  // Git push가 이미 Vercel 배포를 예약함 — 여기서 또 트리거하면 이중 배포
+  if (options.skipExplicitDeploy) {
+    return { mode: 'git_webhook', deploymentUrl: publicUrl }
+  }
 
   // gitSource 확보 (세션 → Vercel project link)
   let gitSource = options.gitSource

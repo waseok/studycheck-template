@@ -392,22 +392,35 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
       )
     }
 
+    // 환경변수를 먼저 반영한 뒤 Git 동기화 (webhook 배포에 env가 포함되도록)
+    await applyVercelEnvAndEnsureDeploy({
+      token: session.tokens.vercelToken,
+      projectId: vercelProjectId,
+      projectName: vercelProjectName,
+      teamId: vercelTeamId,
+      databaseUrl,
+      jwtSecret: jwtSecret.trim(),
+      skipExplicitDeploy: true,
+    })
+
+    let gitPushed = false
     if (session.tokens.githubToken && session.github?.owner && session.github?.repo) {
       try {
         const scriptContent = readTemplateVercelBuildScript()
-        await syncVercelBuildScriptToRepo({
+        const sync = await syncVercelBuildScriptToRepo({
           token: session.tokens.githubToken,
           owner: session.github.owner,
           repo: session.github.repo,
           branch: 'main',
           scriptContent,
         })
+        if (sync.updated) gitPushed = true
       } catch (error) {
         console.warn('School repo build script sync warning:', error)
       }
 
       try {
-        await syncSchoolRuntimeApiToRepo({
+        const apiSync = await syncSchoolRuntimeApiToRepo({
           token: session.tokens.githubToken,
           owner: session.github.owner,
           repo: session.github.repo,
@@ -415,6 +428,7 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
           indexTsContent: readTemplateApiIndex(),
           vercelJsonContent: readSchoolVercelJson(),
         })
+        if (apiSync.updated) gitPushed = true
       } catch (error) {
         console.warn('School repo runtime API sync warning:', error)
       }
@@ -450,6 +464,7 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
       databaseUrl,
       jwtSecret: jwtSecret.trim(),
       gitSource,
+      skipExplicitDeploy: gitPushed,
     })
 
     const deploymentUrl =
@@ -471,11 +486,13 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
     sendSession(res, updated, {
       deploymentUrl,
       message:
-        deployResult.mode === 'first_deploy'
-          ? ensured.recreated
-            ? '사라진 Vercel 프로젝트를 다시 만들고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
-            : '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
-          : '환경변수를 저장하고 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
+        deployResult.mode === 'git_webhook'
+          ? '환경변수를 저장했고, Git 푸시로 배포가 시작됐습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+          : deployResult.mode === 'first_deploy'
+            ? ensured.recreated
+              ? '사라진 Vercel 프로젝트를 다시 만들고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+              : '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+            : '환경변수를 저장하고 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
     })
   } catch (error) {
     console.error('Onboarding provision error:', error)

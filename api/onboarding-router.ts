@@ -561,9 +561,19 @@ async function handleProvision(req: any, res: any) {
     throw new Error(`DB 준비에 실패했습니다. Session pooler DATABASE_URL과 비밀번호를 확인하세요. (${detail})`)
   }
 
-  // 1.5) 학교 GitHub 저장소 빌드/API 보정
-  // - vercel-build.mjs: 빌드 중 db push 제거
-  // - api/index + vercel.json: Express API 복구, settings stub 제거 (온보딩 무한 루프 방지)
+  // 2) 환경변수/프로젝트 설정을 먼저 반영 (Git 자동 배포에 DATABASE_URL 등이 포함되도록)
+  await applyVercelEnvAndEnsureDeploy({
+    token: session.tokens.vercelToken,
+    projectId: vercelProjectId,
+    projectName: vercelProjectName,
+    teamId: session.vercel.teamId,
+    databaseUrl: session.supabase.databaseUrl,
+    jwtSecret,
+    skipExplicitDeploy: true,
+  })
+
+  // 3) 학교 GitHub 저장소 빌드/API 보정 — 커밋이 생기면 Vercel이 webhook으로 1회 배포
+  let gitPushed = false
   if (session.tokens.githubToken && session.github?.owner && session.github?.repo) {
     try {
       const scriptContent = readTemplateVercelBuildScript()
@@ -575,6 +585,7 @@ async function handleProvision(req: any, res: any) {
         scriptContent,
       })
       if (sync.updated) {
+        gitPushed = true
         console.log(
           `Synced vercel-build.mjs to ${session.github.owner}/${session.github.repo} (skip db push)`
         )
@@ -593,6 +604,7 @@ async function handleProvision(req: any, res: any) {
         vercelJsonContent: readSchoolVercelJson(),
       })
       if (apiSync.updated) {
+        gitPushed = true
         console.log(
           `Synced school runtime API files to ${session.github.owner}/${session.github.repo}`
         )
@@ -602,7 +614,7 @@ async function handleProvision(req: any, res: any) {
     }
   }
 
-  // 2) 세션의 GitHub 정보로 gitSource 준비 (없어도 Vercel link에서 재조회)
+  // 4) gitSource 준비
   let gitSource: VercelGitSource | undefined
   if (session.tokens.githubToken && session.github?.owner && session.github?.repo) {
     try {
@@ -625,7 +637,7 @@ async function handleProvision(req: any, res: any) {
     }
   }
 
-  // 3) 환경변수 + 재배포/첫 배포
+  // 5) Git push로 이미 배포가 걸렸으면 수동 트리거 생략 (이중 배포 방지)
   const deployResult = await applyVercelEnvAndEnsureDeploy({
     token: session.tokens.vercelToken,
     projectId: vercelProjectId,
@@ -634,6 +646,7 @@ async function handleProvision(req: any, res: any) {
     databaseUrl: session.supabase.databaseUrl,
     jwtSecret,
     gitSource,
+    skipExplicitDeploy: gitPushed,
   })
 
   const deploymentUrl =
@@ -657,11 +670,13 @@ async function handleProvision(req: any, res: any) {
     sessionToken: sealOnboardingSession(updated),
     deploymentUrl,
     message:
-      deployResult.mode === 'first_deploy'
-        ? ensured.recreated
-          ? '사라진 Vercel 프로젝트를 다시 만들고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
-          : '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
-        : '환경변수를 저장하고 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
+      deployResult.mode === 'git_webhook'
+        ? '환경변수를 저장했고, Git 푸시로 배포가 시작됐습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+        : deployResult.mode === 'first_deploy'
+          ? ensured.recreated
+            ? '사라진 Vercel 프로젝트를 다시 만들고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+            : '환경변수를 저장하고 첫 배포를 시작했습니다. 배포가 끝나면 학교 정보 설정으로 이동하세요.'
+          : '환경변수를 저장하고 재배포를 시작했습니다. 잠시 후 학교 정보 설정으로 이동하세요.',
   })
 }
 
