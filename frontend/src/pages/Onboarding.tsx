@@ -854,7 +854,18 @@ const Onboarding = () => {
             <button type="button" onClick={handleProvision} disabled={submitting || !session?.supabase?.databaseUrl || !session?.vercel?.projectId} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
               Vercel 환경변수 주입 + 재배포
             </button>
-            {session?.vercel?.deploymentUrl && <p className="text-sm text-green-700">배포 주소: <a className="underline" href={session.vercel.deploymentUrl} target="_blank" rel="noreferrer">{session.vercel.deploymentUrl}</a></p>}
+            {session?.vercel?.deploymentUrl && (
+              <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900 space-y-1">
+                <p className="font-medium">공개 배포 주소 (이 주소로 들어가세요)</p>
+                <a className="underline break-all" href={session.vercel.deploymentUrl} target="_blank" rel="noreferrer">
+                  {session.vercel.deploymentUrl}
+                </a>
+                <p className="text-xs text-green-800/80">
+                  해시가 들어간 긴 배포 URL은 Vercel 로그인 보호 때문에 「You Need Access」가 뜰 수 있습니다.
+                  위 <code className="rounded bg-white/80 px-1">프로젝트이름.vercel.app</code> 주소를 사용하세요.
+                </p>
+              </div>
+            )}
           </section>
 
           <section className="space-y-3 border-t border-gray-100 pt-6">

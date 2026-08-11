@@ -598,6 +598,9 @@ export async function ensureVercelProjectBuildSettings(
         outputDirectory: STUDYCHECK_PROJECT_SETTINGS.outputDirectory,
         devCommand: STUDYCHECK_PROJECT_SETTINGS.devCommand,
         nodeVersion: STUDYCHECK_PROJECT_SETTINGS.nodeVersion,
+        // 학교 사이트는 외부 공개 — Authentication 기본 보호 해제
+        ssoProtection: null,
+        passwordProtection: null,
       }),
     },
     teamId
@@ -733,6 +736,38 @@ export async function redeployVercelProject(
   return true
 }
 
+/** 학교 사이트는 외부 공개용 — Vercel Authentication(SSO) 보호를 끕니다 */
+export async function disableVercelDeploymentProtection(
+  token: string,
+  projectId: string,
+  teamId?: string
+): Promise<void> {
+  const patchRes = await vercelFetch(
+    token,
+    `/v9/projects/${projectId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        // null 이면 Vercel Authentication 비활성화
+        ssoProtection: null,
+        passwordProtection: null,
+      }),
+    },
+    teamId
+  )
+  if (!patchRes.ok) {
+    console.warn(
+      'Vercel deployment protection disable warning:',
+      formatVercelApiError(await patchRes.text(), '배포 보호 해제 실패')
+    )
+  }
+}
+
+/** 사용자가 바로 열 수 있는 프로덕션 공개 URL */
+export function getVercelProductionUrl(projectName: string): string {
+  return `https://${sanitizeVercelProjectName(projectName)}.vercel.app`
+}
+
 /**
  * 환경변수 주입 후 재배포(또는 첫 배포)까지 한 번에 처리.
  * 온보딩 4단계에서 발생하던 주요 실패(배포 없음 / projectSettings / Git 미연결)를 여기서 흡수합니다.
@@ -747,8 +782,12 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
   gitSource?: VercelGitSource
 }): Promise<{ deploymentUrl?: string; mode: 'redeploy' | 'first_deploy' }> {
   const { token, projectId, projectName, teamId, databaseUrl, jwtSecret } = options
+  const publicUrl = getVercelProductionUrl(projectName)
 
   await ensureVercelProjectBuildSettings(token, projectId, teamId)
+  // 배포 URL(해시)이 아니라 공개 프로덕션 도메인을 쓰게, SSO 보호를 먼저 끔
+  await disableVercelDeploymentProtection(token, projectId, teamId)
+
   await upsertVercelEnv(token, projectId, 'DATABASE_URL', databaseUrl, teamId)
   await upsertVercelEnv(token, projectId, 'JWT_SECRET', jwtSecret, teamId)
   await upsertVercelEnv(token, projectId, 'NODE_ENV', 'production', teamId)
@@ -757,7 +796,7 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
   if (redeployed) {
     return {
       mode: 'redeploy',
-      deploymentUrl: `https://${projectName}.vercel.app`,
+      deploymentUrl: publicUrl,
     }
   }
 
@@ -774,7 +813,7 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
     )
   }
 
-  const deployment = await triggerVercelDeployment({
+  await triggerVercelDeployment({
     token,
     projectName,
     projectId,
@@ -782,11 +821,11 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
     gitSource,
   })
 
+  // deployment API가 돌려주는 해시 URL은 Vercel Authentication에 막히는 경우가 많아
+  // 항상 프로덕션 별칭(*.vercel.app)을 사용자에게 안내한다.
   return {
     mode: 'first_deploy',
-    deploymentUrl: deployment.url?.startsWith('http')
-      ? deployment.url
-      : `https://${deployment.url}`,
+    deploymentUrl: publicUrl,
   }
 }
 
