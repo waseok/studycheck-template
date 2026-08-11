@@ -4,6 +4,7 @@ import {
   getGitHubOAuthConfig,
   getGitHubRepo,
   getGitHubUser,
+  syncSchoolRuntimeApiToRepo,
   syncVercelBuildScriptToRepo,
 } from '../utils/github'
 import {
@@ -31,7 +32,7 @@ import {
   type VercelGitSource,
 } from '../utils/vercel'
 import { ensureDefaultSettings, pushDatabaseSchema, testDatabaseConnection } from '../utils/dbBootstrap'
-import { readTemplateVercelBuildScript } from '../utils/vercelBuildScript'
+import { readTemplateApiIndex, readTemplateVercelBuildScript, readTemplateVercelJson } from '../utils/vercelBuildScript'
 
 const TEMPLATE_OWNER = 'waseok'
 const TEMPLATE_REPO = 'studycheck-template'
@@ -403,6 +404,19 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
         })
       } catch (error) {
         console.warn('School repo build script sync warning:', error)
+      }
+
+      try {
+        await syncSchoolRuntimeApiToRepo({
+          token: session.tokens.githubToken,
+          owner: session.github.owner,
+          repo: session.github.repo,
+          branch: 'main',
+          indexTsContent: readTemplateApiIndex(),
+          vercelJsonContent: readTemplateVercelJson(),
+        })
+      } catch (error) {
+        console.warn('School repo runtime API sync warning:', error)
       }
     }
 

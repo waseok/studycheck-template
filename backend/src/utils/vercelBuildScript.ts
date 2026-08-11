@@ -14,3 +14,21 @@ export function readTemplateVercelBuildScript(): string {
   }
   return fs.readFileSync(candidate, 'utf8')
 }
+
+function readCwdFile(...parts: string[]): string {
+  const candidate = path.join(process.cwd(), ...parts)
+  if (!fs.existsSync(candidate)) {
+    throw new Error(`템플릿 파일 ${parts.join('/')} 를 찾을 수 없습니다.`)
+  }
+  return fs.readFileSync(candidate, 'utf8')
+}
+
+/** 학교 저장소 동기화용 — Express API 진입점 */
+export function readTemplateApiIndex(): string {
+  return readCwdFile('api', 'index.ts')
+}
+
+/** 학교 저장소 동기화용 — vercel.json */
+export function readTemplateVercelJson(): string {
+  return readCwdFile('vercel.json')
+}

@@ -270,3 +270,108 @@ export async function syncVercelBuildScriptToRepo(options: {
   })
   return { updated: true }
 }
+
+/** GitHub 저장소 파일 삭제 (없으면 무시) */
+export async function deleteGitHubFile(options: {
+  token: string
+  owner: string
+  repo: string
+  path: string
+  message: string
+  branch?: string
+}): Promise<boolean> {
+  const existing = await getGitHubFileContent({
+    token: options.token,
+    owner: options.owner,
+    repo: options.repo,
+    path: options.path,
+    ref: options.branch,
+  })
+  if (!existing) return false
+
+  const response = await fetch(
+    `${GITHUB_API}/repos/${options.owner}/${options.repo}/contents/${options.path}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${options.token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'studycheck-template-onboarding',
+      },
+      body: JSON.stringify({
+        message: options.message,
+        sha: existing.sha,
+        ...(options.branch ? { branch: options.branch } : {}),
+      }),
+    }
+  )
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text()
+    throw new Error(`GitHub 파일 삭제 실패(${options.path}): ${text}`)
+  }
+  return response.ok
+}
+
+/**
+ * 학교 저장소에 Express API 진입점(api/index)과 vercel.json 을 맞추고,
+ * dbConnected 를 항상 false 로 돌리던 settings stub 파일을 제거합니다.
+ */
+export async function syncSchoolRuntimeApiToRepo(options: {
+  token: string
+  owner: string
+  repo: string
+  branch?: string
+  indexTsContent: string
+  vercelJsonContent: string
+}): Promise<{ updated: boolean }> {
+  const branch = options.branch || 'main'
+  let updated = false
+  const norm = (s: string) => s.replace(/\r\n/g, '\n')
+
+  const syncFile = async (path: string, content: string, message: string) => {
+    const existing = await getGitHubFileContent({
+      token: options.token,
+      owner: options.owner,
+      repo: options.repo,
+      path,
+      ref: branch,
+    })
+    if (existing && norm(existing.content) === norm(content)) return
+    await upsertGitHubFile({
+      token: options.token,
+      owner: options.owner,
+      repo: options.repo,
+      path,
+      content,
+      message,
+      branch,
+    })
+    updated = true
+  }
+
+  await syncFile(
+    'api/index.ts',
+    options.indexTsContent,
+    'fix: restore Express API entry so school site can leave onboarding'
+  )
+  await syncFile(
+    'vercel.json',
+    options.vercelJsonContent,
+    'fix: route /api/* to Express while keeping onboarding-router'
+  )
+
+  for (const stubPath of ['api/settings/status.ts', 'api/settings/public.ts']) {
+    const removed = await deleteGitHubFile({
+      token: options.token,
+      owner: options.owner,
+      repo: options.repo,
+      path: stubPath,
+      message: `fix: remove stub ${stubPath} that forced onboarding forever`,
+      branch,
+    })
+    if (removed) updated = true
+  }
+
+  return { updated }
+}
