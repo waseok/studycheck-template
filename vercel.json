@@ -10,5 +10,22 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/onboarding/github/repo.ts": {
+      "maxDuration": 60
+    },
+    "api/onboarding/github/connect.ts": {
+      "maxDuration": 30
+    },
+    "api/onboarding/vercel/project.ts": {
+      "maxDuration": 60
+    },
+    "api/onboarding/vercel/teams.ts": {
+      "maxDuration": 30
+    },
+    "api/onboarding/session.ts": {
+      "maxDuration": 30
+    }
+  }
 }

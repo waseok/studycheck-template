@@ -48,6 +48,50 @@ export async function getGitHubUser(token: string): Promise<GitHubUser> {
   return githubFetch<GitHubUser>(token, '/user')
 }
 
+/** github.com/owner/repo 또는 owner/repo → { owner, repo } */
+export function parseGitHubRepoRef(input: string): { owner: string; repo: string } | null {
+  const raw = input.trim()
+  if (!raw) return null
+
+  const fromUrl = raw.match(/github\.com[/:]([^/\s]+)\/([^/\s#?]+)/i)
+  if (fromUrl) {
+    return {
+      owner: fromUrl[1],
+      repo: fromUrl[2].replace(/\.git$/i, ''),
+    }
+  }
+
+  const fromSlug = raw.match(/^([^/\s]+)\/([^/\s]+)$/)
+  if (fromSlug) {
+    return {
+      owner: fromSlug[1],
+      repo: fromSlug[2].replace(/\.git$/i, ''),
+    }
+  }
+
+  return null
+}
+
+export async function getGitHubRepo(
+  token: string,
+  owner: string,
+  repo: string
+): Promise<GitHubCreateRepoResult> {
+  const result = await githubFetch<{
+    owner: { login: string }
+    name: string
+    html_url: string
+    private: boolean
+  }>(token, `/repos/${owner}/${repo}`)
+
+  return {
+    owner: result.owner.login,
+    repo: result.name,
+    repoUrl: result.html_url,
+    visibility: result.private ? 'private' : 'public',
+  }
+}
+
 export async function createRepoFromTemplate(options: {
   token: string
   templateOwner: string
@@ -58,8 +102,9 @@ export async function createRepoFromTemplate(options: {
   visibility?: 'public' | 'private'
 }): Promise<GitHubCreateRepoResult> {
   const user = await getGitHubUser(options.token)
+  const owner = options.owner || user.login
   const payload = {
-    owner: options.owner || user.login,
+    owner,
     name: options.name,
     description: options.description || '학교별 연수관리 플랫폼 템플릿 복제본',
     private: (options.visibility || 'private') === 'private',
@@ -67,10 +112,10 @@ export async function createRepoFromTemplate(options: {
   }
 
   const result = await githubFetch<{
-    owner: { login: string }
-    name: string
-    html_url: string
-    private: boolean
+    owner?: { login: string }
+    name?: string
+    html_url?: string
+    private?: boolean
   }>(
     options.token,
     `/repos/${options.templateOwner}/${options.templateRepo}/generate`,
@@ -80,11 +125,19 @@ export async function createRepoFromTemplate(options: {
     }
   )
 
-  return {
-    owner: result.owner.login,
-    repo: result.name,
-    repoUrl: result.html_url,
-    visibility: result.private ? 'private' : 'public',
+  // generate API는 비동기로 끝나 owner 필드가 비는 경우가 있어, 조회/유저정보로 보정
+  const resolvedOwner = result.owner?.login || owner
+  const resolvedRepo = result.name || options.name
+
+  try {
+    return await getGitHubRepo(options.token, resolvedOwner, resolvedRepo)
+  } catch {
+    return {
+      owner: resolvedOwner,
+      repo: resolvedRepo,
+      repoUrl: result.html_url || `https://github.com/${resolvedOwner}/${resolvedRepo}`,
+      visibility: result.private ? 'private' : (options.visibility || 'private'),
+    }
   }
 }
 

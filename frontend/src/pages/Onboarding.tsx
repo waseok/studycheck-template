@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TokenGuidePanel } from '../components/onboarding/TokenGuidePanel'
 import {
+  connectExistingGitHubRepo,
   connectExistingSupabase,
   connectGitHubRepo,
   connectVercelProject,
@@ -71,7 +72,9 @@ const Onboarding = () => {
     repoName: 'my-school-studycheck',
     githubToken: '',
     visibility: 'private' as 'public' | 'private',
+    existingRepoUrl: '',
   })
+  const [githubMode, setGithubMode] = useState<'create' | 'existing'>('create')
   const [vercelForm, setVercelForm] = useState({
     vercelToken: '',
     teamId: '',
@@ -106,6 +109,16 @@ const Onboarding = () => {
             setSession(existing.session)
             if (existing.session.repoName) {
               setGithubForm((prev) => ({ ...prev, repoName: existing.session.repoName || prev.repoName }))
+            }
+            if (existing.session.github?.repoUrl) {
+              setGithubForm((prev) => ({
+                ...prev,
+                existingRepoUrl: existing.session.github?.repoUrl || prev.existingRepoUrl,
+              }))
+              setVercelForm((prev) => ({
+                ...prev,
+                projectName: prev.projectName || existing.session.repoName || existing.session.github?.repo || '',
+              }))
             }
           } catch {
             localStorage.removeItem(STORAGE_KEY)
@@ -183,7 +196,47 @@ const Onboarding = () => {
         ...prev,
         projectName: result.session.repoName || githubForm.repoName,
       }))
+      if (result.message) setHint(result.message)
     })
+  }
+
+  const handleConnectExistingGitHub = async () => {
+    if (!githubForm.githubToken.trim()) {
+      setError('GitHub 토큰을 입력해주세요.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (!githubForm.existingRepoUrl.trim()) {
+      setError('기존 GitHub 저장소 URL 또는 owner/repo 를 입력해주세요.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    await withSubmit(async (token) => {
+      const result = await connectExistingGitHubRepo(token, {
+        githubToken: githubForm.githubToken.trim(),
+        repoUrl: githubForm.existingRepoUrl.trim(),
+      })
+      persistSessionToken(result.sessionToken)
+      setSessionToken(result.sessionToken)
+      setSession(result.session)
+      setVercelForm((prev) => ({
+        ...prev,
+        projectName: result.session.repoName || result.session.github?.repo || prev.projectName,
+      }))
+      if (result.message) setHint(result.message)
+    })
+  }
+
+  const handleContinueFromGitHub = () => {
+    if (!session?.github?.repoUrl) {
+      setError('연결된 GitHub 저장소가 없습니다.')
+      return
+    }
+    setError('')
+    setHint(`1단계 완료 상태입니다. 아래 2단계 Vercel로 진행하세요. (${session.github.owner}/${session.github.repo})`)
+    const el = document.getElementById('onboarding-step-vercel')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const handleLoadVercelTeams = async () => {
@@ -337,24 +390,44 @@ const Onboarding = () => {
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-gray-900">1. GitHub 템플릿 복제 (필수 · 먼저)</h2>
             <p className="text-sm text-gray-600">
-              Vercel보다 <strong>먼저</strong> GitHub 저장소를 만들어야 합니다. 아래 「GitHub 저장소 생성」이 성공하면 초록색 완료 링크가 뜹니다.
+              이미 만든 저장소가 있으면 <strong>다시 만들 필요 없습니다.</strong> 아래에서 기존 저장소를 연결하거나, 완료된 1단계를 그대로 사용하세요.
             </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <input
-                value={githubForm.repoName}
-                onChange={(e) => setGithubForm((prev) => ({ ...prev, repoName: e.target.value }))}
-                placeholder="새 저장소 이름"
-                className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
-              />
-              <select
-                value={githubForm.visibility}
-                onChange={(e) => setGithubForm((prev) => ({ ...prev, visibility: e.target.value as 'public' | 'private' }))}
-                className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+
+            {session?.github?.repoUrl && (
+              <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 space-y-2">
+                <p className="text-sm text-green-800 font-medium">
+                  ✓ 1단계 완료:{' '}
+                  <a className="underline" href={session.github.repoUrl} target="_blank" rel="noreferrer">
+                    {session.github.owner}/{session.github.repo}
+                  </a>
+                </p>
+                <button
+                  type="button"
+                  onClick={handleContinueFromGitHub}
+                  className="px-4 py-2 rounded-lg bg-green-700 text-white text-sm hover:bg-green-800"
+                >
+                  재생성 없이 2단계로 계속
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => setGithubMode('create')}
+                className={`px-3 py-1.5 rounded-lg border ${githubMode === 'create' ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-gray-300 text-gray-600'}`}
               >
-                <option value="private">private</option>
-                <option value="public">public</option>
-              </select>
+                새로 생성
+              </button>
+              <button
+                type="button"
+                onClick={() => setGithubMode('existing')}
+                className={`px-3 py-1.5 rounded-lg border ${githubMode === 'existing' ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-gray-300 text-gray-600'}`}
+              >
+                기존 저장소 연결
+              </button>
             </div>
+
             <TokenGuidePanel guideId="github" />
             <input
               type="password"
@@ -363,41 +436,59 @@ const Onboarding = () => {
               placeholder="GitHub token (repo 권한)"
               className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
             />
-            <button type="button" onClick={handleGitHub} disabled={submitting || !githubForm.githubToken.trim()} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-              {submitting ? '생성 중...' : 'GitHub 저장소 생성'}
-            </button>
-            {!githubForm.githubToken.trim() && (
-              <p className="text-xs text-amber-700">GitHub 토큰을 입력해야 생성할 수 있습니다.</p>
-            )}
-            {session?.github?.repoUrl ? (
-              <p className="text-sm text-green-700 font-medium">
-                ✓ 1단계 완료:{' '}
-                <a className="underline" href={session.github.repoUrl} target="_blank" rel="noreferrer">
-                  {session.github.repoUrl}
-                </a>
-              </p>
+
+            {githubMode === 'create' ? (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <input
+                    value={githubForm.repoName}
+                    onChange={(e) => setGithubForm((prev) => ({ ...prev, repoName: e.target.value }))}
+                    placeholder="새 저장소 이름"
+                    className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                  />
+                  <select
+                    value={githubForm.visibility}
+                    onChange={(e) => setGithubForm((prev) => ({ ...prev, visibility: e.target.value as 'public' | 'private' }))}
+                    className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="private">private</option>
+                    <option value="public">public</option>
+                  </select>
+                </div>
+                <button type="button" onClick={handleGitHub} disabled={submitting || !githubForm.githubToken.trim()} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                  {submitting ? '처리 중...' : session?.github?.repoUrl ? '이미 연결됨 (누르면 재사용)' : 'GitHub 저장소 생성'}
+                </button>
+                <p className="text-xs text-gray-500">같은 이름이 이미 있으면 새로 만들지 않고 그 저장소에 연결합니다.</p>
+              </>
             ) : (
-              <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                아직 1단계가 끝나지 않았습니다. GitHub 토큰을 넣고 「GitHub 저장소 생성」을 눌러 초록색 완료 링크가 나올 때까지 진행하세요.
-              </p>
+              <>
+                <input
+                  value={githubForm.existingRepoUrl}
+                  onChange={(e) => setGithubForm((prev) => ({ ...prev, existingRepoUrl: e.target.value }))}
+                  placeholder="https://github.com/owner/repo 또는 owner/repo"
+                  className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
+                />
+                <button type="button" onClick={handleConnectExistingGitHub} disabled={submitting || !githubForm.githubToken.trim()} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                  {submitting ? '연결 중...' : '기존 저장소 연결'}
+                </button>
+              </>
             )}
           </section>
 
-          <section className="space-y-3 border-t border-gray-100 pt-6">
+          <section id="onboarding-step-vercel" className="space-y-3 border-t border-gray-100 pt-6">
             <h2 className="text-xl font-bold text-gray-900">2. Vercel 프로젝트 연결</h2>
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 space-y-1">
-              <p className="font-medium">버튼이 켜지려면 아래 두 가지가 모두 필요합니다.</p>
-              <p>{session?.github?.repo ? '✓' : '○'} 1단계 GitHub 저장소 생성 완료</p>
-              <p>{vercelForm.vercelToken.trim() ? '✓' : '○'} Vercel 토큰 입력</p>
+              <p className="font-medium">진행 상태</p>
+              <p>
+                {session?.github?.owner && session?.github?.repo
+                  ? `✓ GitHub: ${session.github.owner}/${session.github.repo}`
+                  : '○ 1단계 GitHub 저장소 연결 필요'}
+              </p>
+              <p>{vercelForm.vercelToken.trim() ? '✓ Vercel 토큰 입력됨' : '○ Vercel 토큰 입력'}</p>
               <p className="text-xs text-gray-500 pt-1">
-                「팀 목록 불러오기」는 <strong>GitHub 연결이 아닙니다.</strong> Vercel 팀 계정만 고르는 선택 단계이며, 개인 계정이면 건너뛰어도 됩니다.
+                「팀 목록 불러오기」는 GitHub 연결이 아닙니다. 개인 계정이면 건너뛰어도 됩니다.
               </p>
             </div>
-            {!session?.github?.repo && (
-              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                지금 Vercel 버튼이 비활성인 이유: 1단계 GitHub 저장소가 아직 없습니다. 위로 돌아가 「GitHub 저장소 생성」을 먼저 성공시켜 주세요.
-              </p>
-            )}
             <TokenGuidePanel guideId="vercel" />
             <input
               type="password"

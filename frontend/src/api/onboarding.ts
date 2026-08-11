@@ -92,10 +92,27 @@ export async function getOnboardingSession(sessionToken: string) {
 
 export async function connectGitHubRepo(
   sessionToken: string,
-  payload: { githubToken: string; repoName: string; visibility: 'public' | 'private' }
+  payload: {
+    githubToken: string
+    repoName: string
+    visibility: 'public' | 'private'
+    forceRecreate?: boolean
+  }
 ) {
-  const response = await apiClient.post<SessionResponse>(
+  const response = await apiClient.post<SessionResponse & { reused?: boolean; message?: string }>(
     '/onboarding/github/repo',
+    payload,
+    withSessionToken(sessionToken)
+  )
+  return response.data
+}
+
+export async function connectExistingGitHubRepo(
+  sessionToken: string,
+  payload: { githubToken: string; repoUrl: string }
+) {
+  const response = await apiClient.post<SessionResponse & { message?: string }>(
+    '/onboarding/github/connect',
     payload,
     withSessionToken(sessionToken)
   )
