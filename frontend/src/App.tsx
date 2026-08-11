@@ -51,24 +51,38 @@ const SetupGate = ({ children }: { children: ReactNode }) => {
   }
 
   if (backendError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-lg w-full bg-white border border-red-200 rounded-2xl shadow-lg p-6 text-center">
-          <div className="text-4xl mb-3">⚠️</div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">API 서버에 연결할 수 없습니다</h1>
-          <p className="text-sm text-gray-600 mb-4">
-            배포 직후라면 잠시 후 다시 시도하거나, 로컬 개발 중이라면 백엔드 서버가 실행 중인지 확인해주세요.
-          </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="mt-5 px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
-          >
-            다시 시도
-          </button>
+    // 온보딩은 API 복구/설정이 필요한 화면이므로 진입은 허용한다
+    if (location.pathname !== '/onboarding') {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+          <div className="max-w-lg w-full bg-white border border-red-200 rounded-2xl shadow-lg p-6 text-center">
+            <div className="text-4xl mb-3">⚠️</div>
+            <h1 className="text-xl font-bold text-gray-900 mb-2">API 서버에 연결할 수 없습니다</h1>
+            <p className="text-sm text-gray-600 mb-4">
+              배포 직후라면 잠시 후 다시 시도하거나, 로컬 개발 중이라면 백엔드 서버가 실행 중인지 확인해주세요.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+              >
+                다시 시도
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = '/onboarding'
+                }}
+                className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+              >
+                온보딩으로 이동
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
   }
 
   if (!dbConnected && location.pathname !== '/onboarding') {
