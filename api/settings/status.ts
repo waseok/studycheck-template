@@ -6,6 +6,9 @@
  *
  * hasDatabaseUrl / dbError 로 「env 미반영」과 「연결 실패」를 구분합니다.
  */
+import { probeRuntimeDatabase } from '../../backend/src/utils/dbBootstrap'
+import { getAppSettings } from '../../backend/src/utils/settings'
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json')
   res.setHeader('Cache-Control', 'no-store')
@@ -39,7 +42,6 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { probeRuntimeDatabase } = await import('../../backend/src/utils/dbBootstrap')
     const probed = await probeRuntimeDatabase()
 
     if (!probed.ok) {
@@ -58,7 +60,6 @@ export default async function handler(req: any, res: any) {
       return
     }
 
-    const { getAppSettings } = await import('../../backend/src/utils/settings')
     const settings = await getAppSettings()
     res.statusCode = 200
     res.end(

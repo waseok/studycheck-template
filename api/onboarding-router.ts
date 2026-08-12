@@ -622,6 +622,13 @@ async function handleSupabaseConnect(req: any, res: any) {
   if (!databaseUrl) {
     return json(res, 400, { error: 'Supabase Session pooler DATABASE_URL을 입력해주세요.' })
   }
+  if (/\[?YOUR-PASSWORD\]?/i.test(databaseUrl)) {
+    return json(res, 400, {
+      error:
+        '복사한 URI의 [YOUR-PASSWORD]를 실제 Supabase 데이터베이스 비밀번호로 교체해주세요. ' +
+        '특수문자가 있으면 URL 인코딩하거나, Supabase에서 영문·숫자 비밀번호로 재설정하면 가장 간단합니다.',
+    })
+  }
 
   const normalizedUrl = normalizeDatabaseUrl(databaseUrl)
 

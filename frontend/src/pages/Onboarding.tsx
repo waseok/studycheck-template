@@ -492,11 +492,23 @@ const Onboarding = () => {
   }
 
   const handleConnectSupabase = async () => {
+    const databaseUrl = supabaseForm.databaseUrl.trim()
+    if (!databaseUrl) {
+      setError('Session pooler DATABASE_URL을 입력해주세요.')
+      return
+    }
+    if (/\[?YOUR-PASSWORD\]?/i.test(databaseUrl)) {
+      setError(
+        '복사한 주소의 [YOUR-PASSWORD]를 실제 Supabase 데이터베이스 비밀번호로 바꿔주세요. 특수문자가 있으면 URL 인코딩이 필요합니다.'
+      )
+      return
+    }
+
     await withSubmit(async (token) => {
       const result = await connectExistingSupabase(token, {
         projectUrl: supabaseForm.projectUrl.trim() || undefined,
         projectRef: supabaseForm.projectRef.trim() || undefined,
-        databaseUrl: supabaseForm.databaseUrl.trim(),
+        databaseUrl,
         region: supabaseForm.createRegion.trim() || undefined,
       })
       persistSessionToken(result.sessionToken)
@@ -984,6 +996,11 @@ const Onboarding = () => {
                   프로젝트 화면 <span className="font-semibold">상단 Connect</span> →{' '}
                   <span className="font-semibold">Session pooler (5432)</span> → URI 복사 →{' '}
                   <code className="rounded bg-white/80 px-1">[YOUR-PASSWORD]</code> 를 DB 비밀번호로 교체
+                </p>
+                <p className="font-medium text-amber-800">
+                  주의: <code className="rounded bg-white/80 px-1">[YOUR-PASSWORD]</code> 문구를
+                  그대로 넣으면 연결되지 않습니다. 실제 DB 비밀번호에 @, :, /, # 같은 특수문자가
+                  있으면 percent-encode 하거나 영문·숫자 비밀번호로 재설정하세요.
                 </p>
                 <p className="text-emerald-900/80">
                   Direct / Transaction(6543) 은 사용하지 않습니다. host에 <code className="rounded bg-white/80 px-1">pooler.supabase.com</code> 이

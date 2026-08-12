@@ -2,6 +2,9 @@
  * GET /api/settings/public
  * Express 없이 공개 설정만 반환 (부팅/헤더용)
  */
+import { isDatabaseReady } from '../../backend/src/utils/dbBootstrap'
+import { getAppSettings } from '../../backend/src/utils/settings'
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json')
   res.setHeader('Cache-Control', 'no-store')
@@ -27,17 +30,13 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { isDatabaseReady } = await import('../../backend/src/utils/dbBootstrap')
-    const { getAppSettings } = await import('../../backend/src/utils/settings')
-    const { getRuntimeVercelUrl } = await import('../../backend/src/utils/vercel')
-
     const dbConnected = await isDatabaseReady()
     if (!dbConnected) {
       res.statusCode = 200
       res.end(
         JSON.stringify({
           ...fallback,
-          vercelAppUrl: getRuntimeVercelUrl() || fallback.vercelAppUrl,
+          vercelAppUrl: fallback.vercelAppUrl,
         })
       )
       return
@@ -49,7 +48,7 @@ export default async function handler(req: any, res: any) {
       JSON.stringify({
         schoolName: settings.schoolName || fallback.schoolName,
         schoolLogoUrl: settings.schoolLogoUrl,
-        vercelAppUrl: settings.vercelAppUrl || getRuntimeVercelUrl() || fallback.vercelAppUrl,
+        vercelAppUrl: settings.vercelAppUrl || fallback.vercelAppUrl,
         setupCompleted: Boolean(settings.setupCompleted),
       })
     )
