@@ -144,7 +144,7 @@ export const TOKEN_GUIDES: Record<TokenGuideId, TokenGuideContent> = {
       '생성된 sbp_... 토큰을 복사해 아래 입력란에 붙여넣습니다.',
       '「조직 목록 불러오기」를 눌러 프로젝트를 만들 조직을 선택합니다.',
     ],
-    tips: ['이미 Supabase 프로젝트가 있다면 토큰 없이 아래 Session pooler URI만 입력해도 됩니다.'],
+    tips: ['이미 Supabase 프로젝트가 있다면 관리 토큰 없이 아래 Pooler URI만 입력해도 됩니다.'],
     mockScreenshot: (
       <MockBrowserFrame url="supabase.com/dashboard/account/tokens">
         <div className="space-y-3">
@@ -162,23 +162,25 @@ export const TOKEN_GUIDES: Record<TokenGuideId, TokenGuideContent> = {
     ),
   },
   'supabase-database': {
-    title: 'Supabase Session pooler DATABASE_URL',
+    title: 'Supabase Pooler DATABASE_URL',
     summary:
-      '상단 Connect → Session pooler(5432) URI를 복사하세요. 좌측 Settings → Database 메뉴가 아닙니다.',
-    openUrl: 'https://supabase.com/dashboard/project/_?showConnect=true&method=session',
+      '상단 Connect → Direct → Transaction pooler(권장) 또는 Session pooler → URI를 복사합니다.',
+    openUrl: 'https://supabase.com/dashboard/project/_?showConnect=true&method=transaction',
     openLabel: 'Supabase Connect 패널 열기',
     steps: [
       'supabase.com/dashboard 에 로그인한 뒤, 연결할 프로젝트를 엽니다.',
-      '화면 맨 위(프로젝트 헤더)의 Connect 버튼을 누릅니다. ← 여기가 정답 경로입니다.',
-      '※ 좌측 사이드바 Settings → Database 로 들어가면 예전 UI라서 안내와 다릅니다. Connect 버튼을 쓰세요.',
-      'Connect 패널에서 Session pooler 를 고릅니다. 포트 5432, host에 pooler.supabase.com 이 보여야 합니다.',
-      'Direct connection / Transaction pooler(포트 6543) 는 고르지 마세요.',
-      'Type이 URI 인 문자열을 복사합니다.',
-      '문자열의 [YOUR-PASSWORD] 를 실제 DB 비밀번호로 바꾼 뒤 아래에 붙여넣습니다.',
-      '비밀번호에 ! @ # 등 특수문자가 있으면 URL 인코딩(! → %21) 후 붙여넣습니다.',
+      '화면 맨 위(프로젝트 헤더)의 Connect 버튼을 누릅니다.',
+      'Connect 창 상단에서 Direct(연결 문자열) 탭을 선택합니다. 화면에 Framework / Server / Direct / ORM / MCP가 보이면 Direct입니다.',
+      'Connection Method에서 Vercel 서버리스 권장값인 Transaction pooler를 선택합니다(포트 6543). Session pooler(포트 5432)도 이 앱에서 사용할 수 있습니다.',
+      'Type은 URI를 선택하고 Connection string의 Copy 버튼으로 문자열을 복사합니다.',
+      '복사된 문자열의 [YOUR-PASSWORD]를 대괄호까지 지우고 실제 Database password로 교체합니다.',
+      '비밀번호를 모르면 같은 Connect 창의 Reset database password로 재설정합니다. 영문·숫자만 사용하면 URL 인코딩 문제를 피하기 쉽습니다.',
+      '특수문자가 포함된 기존 비밀번호를 쓴다면 비밀번호 부분만 percent-encode 합니다(예: @ → %40, # → %23).',
+      '완성된 URI 전체를 온보딩 3단계 DATABASE_URL 입력란에 붙여넣습니다.',
     ],
     tips: [
-      'URI 예: postgresql://postgres.[ref]:비밀번호@aws-0-....pooler.supabase.com:5432/postgres',
+      'Transaction 예: postgresql://postgres.[ref]:비밀번호@aws-0-....pooler.supabase.com:6543/postgres (앱이 pgbouncer=true를 자동 추가)',
+      'Session 예: postgresql://postgres.[ref]:비밀번호@aws-0-....pooler.supabase.com:5432/postgres',
       'Project Ref는 https://[ref].supabase.co 의 [ref] 부분입니다. 프로젝트 URL을 넣으면 자동으로 채워집니다.',
       'DB 비밀번호를 잊었다면 Connect 패널의 Reset database password 로 재설정할 수 있습니다.',
     ],
@@ -194,16 +196,16 @@ export const TOKEN_GUIDES: Record<TokenGuideId, TokenGuideContent> = {
             </Highlight>
           </div>
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
-            <p className="text-[11px] font-semibold text-gray-700">Connect → Connection string</p>
+            <p className="text-[11px] font-semibold text-gray-700">Connect → Direct → Connection Method</p>
             <div className="flex flex-wrap gap-2 text-[11px]">
               <span className="rounded-full bg-white px-2 py-1 text-gray-500 line-through">Direct</span>
               <Highlight label="선택">
-                <span className="text-xs font-semibold text-indigo-900">Session pooler · 5432</span>
+                <span className="text-xs font-semibold text-indigo-900">Transaction pooler · 6543</span>
               </Highlight>
-              <span className="rounded-full bg-white px-2 py-1 text-gray-500 line-through">Transaction · 6543</span>
+              <span className="rounded-full bg-white px-2 py-1 text-gray-600">Session · 5432도 가능</span>
             </div>
             <div className="rounded-md bg-gray-900 px-3 py-2 font-mono text-[10px] leading-relaxed text-green-300 break-all">
-              postgresql://postgres.[ref]:[YOUR-PASSWORD]@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres
+              postgresql://postgres.[ref]:[YOUR-PASSWORD]@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres
             </div>
             <p className="text-[11px] text-gray-500">[YOUR-PASSWORD]를 DB 비밀번호로 바꾸고, 특수문자는 URL 인코딩합니다.</p>
           </div>

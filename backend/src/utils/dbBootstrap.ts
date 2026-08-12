@@ -128,7 +128,7 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   }
 }
 
-/** Supabase Session pooler 연결 테스트 */
+/** Supabase Transaction(6543) 또는 Session(5432) pooler 연결 테스트 */
 export async function testDatabaseConnection(databaseUrl: string): Promise<void> {
   const client = new PrismaClient({
     datasources: { db: { url: withDatabaseTimeout(databaseUrl) } },

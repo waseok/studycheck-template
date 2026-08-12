@@ -92,7 +92,7 @@ export const bootstrapInfra = async (req: Request, res: Response) => {
       await testDatabaseConnection(trimmedUrl)
     } catch {
       return res.status(400).json({
-        error: '데이터베이스 연결에 실패했습니다. Supabase Session pooler URI를 확인해주세요.',
+        error: '데이터베이스 연결에 실패했습니다. Supabase Transaction/Session pooler URI와 실제 DB 비밀번호를 확인해주세요.',
       })
     }
 

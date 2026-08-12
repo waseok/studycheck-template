@@ -608,7 +608,7 @@ async function handleSupabaseProject(req: any, res: any) {
     success: true,
     session: updated,
     sessionToken: sealOnboardingSession(updated),
-    hint: 'Supabase 프로젝트가 생성되었습니다. Session pooler DATABASE_URL은 Connect 화면에서 복사해 다음 단계에 입력해주세요.',
+    hint: 'Supabase 프로젝트가 생성되었습니다. Connect → Direct → Transaction pooler(6543, 권장) 또는 Session pooler(5432) URI를 다음 단계에 입력해주세요.',
   })
 }
 
@@ -620,7 +620,7 @@ async function handleSupabaseConnect(req: any, res: any) {
   const body = await readJsonBody(req)
   const databaseUrl = String(body.databaseUrl || '').trim()
   if (!databaseUrl) {
-    return json(res, 400, { error: 'Supabase Session pooler DATABASE_URL을 입력해주세요.' })
+    return json(res, 400, { error: 'Supabase Transaction 또는 Session pooler DATABASE_URL을 입력해주세요.' })
   }
   if (/\[?YOUR-PASSWORD\]?/i.test(databaseUrl)) {
     return json(res, 400, {
@@ -637,7 +637,7 @@ async function handleSupabaseConnect(req: any, res: any) {
   } catch {
     return json(res, 400, {
       error:
-        'Supabase DATABASE_URL 연결에 실패했습니다. Session pooler(포트 5432) URI와 비밀번호를 확인해주세요.',
+        'Supabase DATABASE_URL 연결에 실패했습니다. Transaction pooler(6543) 또는 Session pooler(5432) URI와 실제 DB 비밀번호를 확인해주세요.',
     })
   }
 
@@ -697,7 +697,7 @@ async function handleProvision(req: any, res: any) {
     await ensureDefaultSettings(session.supabase.databaseUrl, session.supabase.projectUrl || undefined)
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`DB 준비에 실패했습니다. Session pooler DATABASE_URL과 비밀번호를 확인하세요. (${detail})`)
+    throw new Error(`DB 준비에 실패했습니다. Pooler DATABASE_URL과 실제 DB 비밀번호를 확인하세요. (${detail})`)
   }
 
   // 2) 환경변수/프로젝트 설정을 먼저 반영 (Git 자동 배포에 DATABASE_URL 등이 포함되도록)

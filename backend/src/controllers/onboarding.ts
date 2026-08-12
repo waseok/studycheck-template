@@ -298,7 +298,7 @@ export const createSupabaseManagedProject = async (req: Request, res: Response) 
     })
 
     sendSession(res, updated, {
-      hint: 'Supabase 프로젝트가 생성되었습니다. Session pooler DATABASE_URL은 Connect 화면에서 복사해 다음 단계에 입력해주세요.',
+      hint: 'Supabase 프로젝트가 생성되었습니다. Connect → Direct → Transaction pooler(6543, 권장) 또는 Session pooler(5432) URI를 다음 단계에 입력해주세요.',
     })
   } catch (error) {
     console.error('Supabase project creation error:', error)
@@ -325,7 +325,7 @@ export const connectExistingSupabase = async (req: Request, res: Response) => {
   }
 
   if (!databaseUrl?.trim()) {
-    return res.status(400).json({ error: 'Supabase Session pooler DATABASE_URL을 입력해주세요.' })
+    return res.status(400).json({ error: 'Supabase Transaction 또는 Session pooler DATABASE_URL을 입력해주세요.' })
   }
 
   try {
@@ -388,7 +388,7 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
       throw new Error(
-        `DB 준비에 실패했습니다. Session pooler DATABASE_URL과 비밀번호를 확인하세요. (${detail})`
+        `DB 준비에 실패했습니다. Pooler DATABASE_URL과 실제 DB 비밀번호를 확인하세요. (${detail})`
       )
     }
 

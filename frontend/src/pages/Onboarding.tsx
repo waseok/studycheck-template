@@ -494,7 +494,7 @@ const Onboarding = () => {
   const handleConnectSupabase = async () => {
     const databaseUrl = supabaseForm.databaseUrl.trim()
     if (!databaseUrl) {
-      setError('Session pooler DATABASE_URL을 입력해주세요.')
+      setError('Supabase Transaction 또는 Session pooler DATABASE_URL을 입력해주세요.')
       return
     }
     if (/\[?YOUR-PASSWORD\]?/i.test(databaseUrl)) {
@@ -600,7 +600,7 @@ const Onboarding = () => {
             state: 'fail',
             detail:
               `DATABASE_URL은 있지만 DB에 연결하지 못했습니다.${status.dbError ? ` (${status.dbError})` : ''} ` +
-              'Supabase Connect → Session pooler URI(포트 5432)와 비밀번호가 맞는지 확인한 뒤, 3단계에서 URL을 다시 넣고 4단계를 재실행해주세요. Transaction pooler(6543)를 썼다면 Session pooler로 바꿔보세요.',
+              'Supabase Connect → Direct → Transaction pooler(6543, 권장) 또는 Session pooler(5432) URI와 실제 DB 비밀번호를 확인한 뒤 3단계부터 다시 진행해주세요.',
           })
         }
       }
@@ -953,7 +953,7 @@ const Onboarding = () => {
               <div>
                 <p className="text-sm font-semibold text-indigo-950">기존 프로젝트 연결 (추천)</p>
                 <p className="text-xs text-indigo-900/80 mt-1">
-                  필수 값은 Session pooler DATABASE_URL 하나입니다. 프로젝트 URL·ref는 선택이며, 비워 둬도 연결됩니다.
+                  필수 값은 Pooler DATABASE_URL 하나입니다. Vercel에는 Transaction pooler(6543)를 권장하며 Session pooler(5432)도 지원합니다. 프로젝트 URL·ref는 선택입니다.
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -991,10 +991,11 @@ const Onboarding = () => {
               </div>
               {/* 접지 않아도 보이도록 핵심 경로를 항상 노출 */}
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950 space-y-1">
-                <p className="font-semibold">DATABASE_URL 복사 경로 (Settings → Database 아님)</p>
+                <p className="font-semibold">DATABASE_URL 복사 경로 (Supabase 최신 Connect 화면)</p>
                 <p>
-                  프로젝트 화면 <span className="font-semibold">상단 Connect</span> →{' '}
-                  <span className="font-semibold">Session pooler (5432)</span> → URI 복사 →{' '}
+                  프로젝트 화면 <span className="font-semibold">상단 Connect</span> → Direct →{' '}
+                  <span className="font-semibold">Transaction pooler (6543, 권장)</span> 또는
+                  Session pooler (5432) → Type: URI → Copy →{' '}
                   <code className="rounded bg-white/80 px-1">[YOUR-PASSWORD]</code> 를 DB 비밀번호로 교체
                 </p>
                 <p className="font-medium text-amber-800">
@@ -1003,13 +1004,14 @@ const Onboarding = () => {
                   있으면 percent-encode 하거나 영문·숫자 비밀번호로 재설정하세요.
                 </p>
                 <p className="text-emerald-900/80">
-                  Direct / Transaction(6543) 은 사용하지 않습니다. host에 <code className="rounded bg-white/80 px-1">pooler.supabase.com</code> 이
-                  들어가야 합니다.
+                  host에 <code className="rounded bg-white/80 px-1">pooler.supabase.com</code>이
+                  들어가야 합니다. <strong>Direct connection(db.*.supabase.co)</strong>은 무료
+                  프로젝트의 Vercel IPv4 환경에서 실패할 수 있으므로 선택하지 마세요.
                 </p>
               </div>
               <TokenGuidePanel guideId="supabase-database" defaultOpen />
               <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700">Session pooler DATABASE_URL (필수)</label>
+                <label className="text-xs font-medium text-gray-700">Transaction/Session pooler DATABASE_URL (필수)</label>
                 <textarea
                   value={supabaseForm.databaseUrl}
                   onChange={(e) => setSupabaseForm((prev) => ({ ...prev, databaseUrl: e.target.value }))}
