@@ -737,8 +737,9 @@ async function handleProvision(req: any, res: any) {
     }
   }
 
-  // 5) DATABASE_URL 은 배포 시점에 바인딩되므로, Git webhook이 있었더라도
-  //    마지막에 반드시 한 번 더 명시 배포해서 현재 Production에 env가 붙게 한다.
+  // 5) 환경변수는 2)에서 Git push보다 먼저 저장했습니다.
+  //    Git 커밋이 있으면 webhook 배포 1회만 사용하고,
+  //    변경 파일이 없을 때만 수동 배포를 1회 시작합니다.
   const deployResult = await applyVercelEnvAndEnsureDeploy({
     token: session.tokens.vercelToken,
     projectId: vercelProjectId,
@@ -747,7 +748,7 @@ async function handleProvision(req: any, res: any) {
     databaseUrl: session.supabase.databaseUrl,
     jwtSecret,
     gitSource,
-    skipExplicitDeploy: false,
+    skipExplicitDeploy: gitPushed,
   })
 
   const deploymentUrl =
@@ -771,8 +772,9 @@ async function handleProvision(req: any, res: any) {
     sessionToken: sealOnboardingSession(updated),
     deploymentUrl,
     gitSynced: gitPushed,
-    message:
-      '환경변수를 저장하고 Production 재배포를 시작했습니다. Vercel에서 Ready가 되면(보통 1~2분) 5단계로 이동하세요.',
+    message: gitPushed
+      ? '환경변수를 저장했고, Git 동기화로 배포를 1회 시작했습니다. Vercel에서 Ready가 되면 5단계로 이동하세요.'
+      : '환경변수를 저장하고 Production 배포를 1회 시작했습니다. Vercel에서 Ready가 되면 5단계로 이동하세요.',
   })
 }
 

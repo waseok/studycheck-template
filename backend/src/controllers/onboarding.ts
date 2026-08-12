@@ -469,8 +469,8 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
       databaseUrl,
       jwtSecret: jwtSecret.trim(),
       gitSource,
-      // env는 배포 시점에 바인딩되므로 마지막에 항상 명시 배포
-      skipExplicitDeploy: false,
+      // env는 Git push 전에 저장됨: Git 변경 시 webhook 1회, 변경 없을 때 수동 배포 1회
+      skipExplicitDeploy: gitPushed,
     })
 
     const deploymentUrl =
@@ -492,8 +492,9 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
     sendSession(res, updated, {
       deploymentUrl,
       gitSynced: gitPushed,
-      message:
-        '환경변수를 저장하고 Production 재배포를 시작했습니다. Vercel에서 Ready가 되면(보통 1~2분) 5단계로 이동하세요.',
+      message: gitPushed
+        ? '환경변수를 저장했고, Git 동기화로 배포를 1회 시작했습니다. Vercel에서 Ready가 되면 5단계로 이동하세요.'
+        : '환경변수를 저장하고 Production 배포를 1회 시작했습니다. Vercel에서 Ready가 되면 5단계로 이동하세요.',
     })
   } catch (error) {
     console.error('Onboarding provision error:', error)
