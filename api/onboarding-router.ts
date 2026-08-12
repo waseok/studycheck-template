@@ -40,6 +40,7 @@ import {
 } from '../backend/src/utils/onboardingSession'
 import {
   ensureDefaultSettings,
+  normalizeDatabaseUrl,
   pushDatabaseSchema,
   testDatabaseConnection,
 } from '../backend/src/utils/dbBootstrap'
@@ -622,7 +623,6 @@ async function handleSupabaseConnect(req: any, res: any) {
     return json(res, 400, { error: 'Supabase Session pooler DATABASE_URL을 입력해주세요.' })
   }
 
-  const { normalizeDatabaseUrl } = await import('../backend/src/utils/dbBootstrap')
   const normalizedUrl = normalizeDatabaseUrl(databaseUrl)
 
   try {
