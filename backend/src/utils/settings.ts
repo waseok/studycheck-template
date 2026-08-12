@@ -11,6 +11,11 @@ export async function getAppSettings() {
   return settings
 }
 
+/** API 함수가 backend/node_modules의 bcryptjs를 올바르게 번들하도록 해시 작업을 백엔드에 둡니다. */
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 10)
+}
+
 export async function verifySchoolPassword(password: string): Promise<boolean> {
   const settings = await getAppSettings()
   if (settings.schoolPasswordHash) {

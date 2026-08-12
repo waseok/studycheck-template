@@ -55,6 +55,8 @@ export function readTemplateSettingsSetup(): string {
 export function readSchoolVercelJson(): string {
   const prismaIncludes =
     '{backend/prisma/**,backend/node_modules/.prisma/**,backend/node_modules/@prisma/client/**}'
+  const setupIncludes =
+    '{backend/prisma/**,backend/node_modules/.prisma/**,backend/node_modules/@prisma/client/**,backend/node_modules/bcryptjs/**}'
   return `${JSON.stringify(
     {
       $schema: 'https://openapi.vercel.sh/vercel.json',
@@ -101,7 +103,7 @@ export function readSchoolVercelJson(): string {
         },
         'api/settings/setup.ts': {
           maxDuration: 30,
-          includeFiles: prismaIncludes,
+          includeFiles: setupIncludes,
         },
       },
     },

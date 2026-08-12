@@ -1,6 +1,5 @@
-import bcrypt from 'bcryptjs'
 import prisma from '../../backend/src/utils/prisma'
-import { getAppSettings } from '../../backend/src/utils/settings'
+import { getAppSettings, hashPassword } from '../../backend/src/utils/settings'
 
 interface SetupBody {
   schoolName?: string
@@ -106,8 +105,8 @@ export default async function handler(req: any, res: any) {
     }
 
     const [schoolPasswordHash, adminPasswordHash] = await Promise.all([
-      bcrypt.hash(schoolPassword, 10),
-      bcrypt.hash(adminPassword, 10),
+      hashPassword(schoolPassword),
+      hashPassword(adminPassword),
     ])
     const vercelAppUrl = normalizeUrl(body.vercelAppUrl || runtimeAppUrl(req))
 

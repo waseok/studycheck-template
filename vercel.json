@@ -54,7 +54,7 @@
     },
     "api/settings/setup.ts": {
       "maxDuration": 30,
-      "includeFiles": "{backend/prisma/**,backend/node_modules/.prisma/**,backend/node_modules/@prisma/client/**}"
+      "includeFiles": "{backend/prisma/**,backend/node_modules/.prisma/**,backend/node_modules/@prisma/client/**,backend/node_modules/bcryptjs/**}"
     },
     "api/ping.ts": {
       "maxDuration": 10

@@ -83,6 +83,11 @@ export function normalizeDatabaseUrl(databaseUrl: string): string {
     if (url.port === '6543' && !url.searchParams.has('pgbouncer')) {
       url.searchParams.set('pgbouncer', 'true')
     }
+    // Vercel 함수 인스턴스마다 큰 Prisma 풀을 만들면 Supabase 연결 한도를 빠르게 소진합니다.
+    // Transaction/Session 공통으로 함수 인스턴스당 연결 1개만 사용합니다.
+    if (isSupabase && host.includes('pooler') && !url.searchParams.has('connection_limit')) {
+      url.searchParams.set('connection_limit', '1')
+    }
     return url.toString()
   } catch {
     return databaseUrl.trim()
