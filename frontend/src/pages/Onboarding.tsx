@@ -108,9 +108,29 @@ const Onboarding = () => {
   const [vercelGitPending, setVercelGitPending] = useState<{ installUrl: string } | null>(null)
   const [vercelGitRetrying, setVercelGitRetrying] = useState(false)
   const [setupDiag, setSetupDiag] = useState<{ checking: boolean; items: SetupDiagItem[] } | null>(null)
+  const [deploymentModal, setDeploymentModal] = useState({
+    open: false,
+    message: '',
+    startedAt: 0,
+  })
+  const [deploymentElapsedSeconds, setDeploymentElapsedSeconds] = useState(0)
   const vercelRelinkPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const vercelRelinkBusyRef = useRef(false)
   const vercelFocusHandlerRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    if (!deploymentModal.open) {
+      setDeploymentElapsedSeconds(0)
+      return
+    }
+
+    const updateElapsed = () => {
+      setDeploymentElapsedSeconds(Math.floor((Date.now() - deploymentModal.startedAt) / 1000))
+    }
+    updateElapsed()
+    const timer = window.setInterval(updateElapsed, 1000)
+    return () => window.clearInterval(timer)
+  }, [deploymentModal.open, deploymentModal.startedAt])
 
   const stopVercelRelinkPolling = () => {
     if (vercelRelinkPollRef.current) {
@@ -517,16 +537,82 @@ const Onboarding = () => {
     })
   }
 
+  /**
+   * Git webhook 배포는 provision API가 끝난 뒤에도 계속될 수 있습니다.
+   * 학교 사이트의 경량 상태 API가 DB 연결까지 성공할 때까지 최대 5분간 확인합니다.
+   */
+  const waitForSchoolDeployment = async (deploymentUrl?: string): Promise<boolean> => {
+    const base = (deploymentUrl || '').replace(/\/+$/, '')
+    if (!base) return false
+
+    const deadline = Date.now() + 5 * 60 * 1000
+    setDeploymentModal((prev) => ({
+      ...prev,
+      message: '배포 요청이 Vercel에 전달됐습니다. 새 빌드가 시작되기를 기다리고 있습니다.',
+    }))
+    // Git webhook 등록 직후에는 이전 Production 응답이 잠시 유지될 수 있습니다.
+    await new Promise((resolve) => window.setTimeout(resolve, 12_000))
+
+    while (Date.now() < deadline) {
+      setDeploymentModal((prev) => ({
+        ...prev,
+        message: 'Vercel이 새 코드를 빌드하고 학교 사이트를 시작하는 중입니다.',
+      }))
+
+      try {
+        const response = await fetch(`${base}/api/settings/status`, {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (response.ok) {
+          const status = (await response.json()) as {
+            dbConnected?: boolean
+            hasDatabaseUrl?: boolean
+          }
+          if (status.hasDatabaseUrl && status.dbConnected) return true
+        }
+      } catch {
+        // 배포 중에는 404, 5xx, 네트워크 단절이 정상적으로 잠시 발생할 수 있습니다.
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 8_000))
+    }
+    return false
+  }
+
   const handleProvision = async () => {
-    await withSubmit(async (token) => {
-      const result = await provisionOnboardingInfrastructure(token, {
-        jwtSecret: deployForm.jwtSecret.trim(),
-      })
-      persistSessionToken(result.sessionToken)
-      setSessionToken(result.sessionToken)
-      setSession(result.session)
-      setHint(result.message || '')
+    setDeploymentModal({
+      open: true,
+      message: '환경변수를 안전하게 저장하고 최신 코드를 준비하고 있습니다.',
+      startedAt: Date.now(),
     })
+
+    try {
+      await withSubmit(async (token) => {
+        const result = await provisionOnboardingInfrastructure(token, {
+          jwtSecret: deployForm.jwtSecret.trim(),
+        })
+        persistSessionToken(result.sessionToken)
+        setSessionToken(result.sessionToken)
+        setSession(result.session)
+
+        const ready = await waitForSchoolDeployment(result.session.vercel?.deploymentUrl)
+        if (ready) {
+          setDeploymentModal((prev) => ({
+            ...prev,
+            message: '준비가 완료됐습니다! 이제 학교 정보를 설정할 수 있습니다.',
+          }))
+          await new Promise((resolve) => window.setTimeout(resolve, 1_200))
+        }
+        setHint(
+          ready
+            ? '배포가 완료되었습니다. 5단계에서 학교 정보 설정으로 이동하세요.'
+            : '배포 요청은 완료됐지만 5분 안에 준비 상태를 확인하지 못했습니다. Vercel 배포가 Ready가 된 뒤 5단계에서 다시 확인해주세요.'
+        )
+      })
+    } finally {
+      setDeploymentModal((prev) => ({ ...prev, open: false }))
+    }
   }
 
   /**
@@ -660,8 +746,9 @@ const Onboarding = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white py-10 px-4">
-      <div className="max-w-4xl mx-auto">
+    <>
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white py-10 px-4">
+        <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-extrabold text-gray-900">학교 사이트 원클릭 온보딩</h1>
           <p className="text-gray-600 mt-2">
@@ -1112,6 +1199,14 @@ const Onboarding = () => {
 
           <section className="space-y-3 border-t border-gray-100 pt-6">
             <h2 className="text-xl font-bold text-gray-900">4. 환경변수 주입 및 첫 배포</h2>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-bold">버튼을 누른 뒤 창을 닫거나 새로고침하지 마세요.</p>
+              <p className="mt-1 leading-6">
+                환경변수 저장 → 최신 코드 동기화 → Vercel 빌드 → 학교 사이트 시작 순서로 진행됩니다.
+                보통 1~3분, 처음 배포하거나 Vercel이 혼잡할 때는 <strong>최대 5분</strong>이 걸릴 수 있습니다.
+                진행 팝업이 자동으로 닫힐 때까지 기다려주세요.
+              </p>
+            </div>
             <input
               value={deployForm.jwtSecret}
               onChange={(e) => setDeployForm({ jwtSecret: e.target.value })}
@@ -1119,7 +1214,7 @@ const Onboarding = () => {
               className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:outline-none"
             />
             <button type="button" onClick={handleProvision} disabled={submitting || !session?.supabase?.databaseUrl || !session?.vercel?.projectId} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-              Vercel 환경변수 주입 + 재배포
+              {deploymentModal.open ? '배포 진행 중... 잠시만 기다려주세요' : 'Vercel 환경변수 주입 + 재배포'}
             </button>
             {session?.vercel?.deploymentUrl && (
               <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900 space-y-1">
@@ -1184,7 +1279,58 @@ const Onboarding = () => {
           </section>
         </div>
       </div>
-    </div>
+      </div>
+
+      {deploymentModal.open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="deployment-title"
+        >
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/20 bg-slate-950 px-7 py-8 text-white shadow-2xl">
+            <div className="absolute -right-16 -top-20 h-48 w-48 rounded-full bg-indigo-500/30 blur-3xl" />
+            <div className="absolute -bottom-20 -left-12 h-44 w-44 rounded-full bg-sky-400/20 blur-3xl" />
+
+            <div className="relative">
+              <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center">
+                <div className="absolute h-24 w-24 animate-spin rounded-full border-2 border-transparent border-t-sky-300 border-r-indigo-400 motion-reduce:animate-none" />
+                <div className="absolute h-16 w-16 animate-pulse rounded-full bg-indigo-500/20 ring-1 ring-indigo-300/50 motion-reduce:animate-none" />
+                <span className="text-3xl" aria-hidden="true">🚀</span>
+              </div>
+
+              <p className="text-center text-xs font-bold uppercase tracking-[0.28em] text-sky-300">
+                Deployment in progress
+              </p>
+              <h2 id="deployment-title" className="mt-2 text-center text-2xl font-extrabold">
+                학교 사이트를 만들고 있어요
+              </h2>
+              <p className="mt-3 min-h-12 text-center text-sm leading-6 text-slate-300" aria-live="polite">
+                {deploymentModal.message}
+              </p>
+
+              <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400 transition-[width] duration-1000"
+                  style={{ width: `${Math.min(92, Math.max(6, (deploymentElapsedSeconds / 300) * 100))}%` }}
+                />
+              </div>
+              <div className="mt-2 flex justify-between text-xs text-slate-400">
+                <span>
+                  경과 {Math.floor(deploymentElapsedSeconds / 60)}분 {deploymentElapsedSeconds % 60}초
+                </span>
+                <span>최대 약 5분</span>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-amber-300/20 bg-amber-200/10 px-4 py-3 text-center text-sm leading-6 text-amber-100">
+                오류가 아닙니다. 창을 닫거나 새로고침하지 말고<br />
+                준비 완료 안내가 나올 때까지 기다려주세요.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
