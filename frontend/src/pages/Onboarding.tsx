@@ -584,8 +584,29 @@ const Onboarding = () => {
             })
             window.open(`${base}/login`, '_blank', 'noopener')
           } else {
-            items.push({ label: '학교 정보 설정', state: 'ok', detail: '설정 화면을 새 탭으로 엽니다.' })
-            window.open(`${base}/setup`, '_blank', 'noopener')
+            // DB 상태만 확인하면 setup 함수의 번들 오류를 놓칠 수 있으므로
+            // 실제 setup 함수가 로드되는지 별도의 경량 GET으로 검증합니다.
+            const setupResponse = await fetch(`${base}/api/settings/setup`, {
+              method: 'GET',
+              cache: 'no-store',
+              signal: AbortSignal.timeout(15_000),
+            })
+            const setupProbe = setupResponse.ok
+              ? ((await setupResponse.json()) as { ready?: boolean })
+              : undefined
+
+            if (setupResponse.ok && setupProbe?.ready) {
+              items.push({ label: '초기 설정 API', state: 'ok', detail: '설정 화면을 새 탭으로 엽니다.' })
+              window.open(`${base}/setup`, '_blank', 'noopener')
+            } else {
+              items.push({
+                label: '초기 설정 API',
+                state: 'fail',
+                detail:
+                  `HTTP ${setupResponse.status} — 최신 setup 함수가 아직 배포되지 않았습니다. ` +
+                  '4단계를 다시 실행한 뒤 학교 프로젝트의 최신 배포가 Ready가 되면 재확인해주세요.',
+              })
+            }
           }
         } else if (status.hasDatabaseUrl === false || status.reason === 'missing_DATABASE_URL') {
           items.push({

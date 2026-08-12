@@ -49,7 +49,21 @@ function normalizeUrl(value: string): string {
 export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json')
   res.setHeader('Cache-Control', 'no-store')
+  // 일반화 사이트의 5단계에서 학교 setup 함수 기동 여부를 점검합니다.
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204
+    res.end()
+    return
+  }
+  if (req.method === 'GET') {
+    res.statusCode = 200
+    res.end(JSON.stringify({ ready: true, service: 'settings-setup' }))
+    return
+  }
   if (req.method !== 'POST') {
     res.statusCode = 405
     res.end(JSON.stringify({ error: '허용되지 않은 메서드입니다.' }))

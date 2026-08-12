@@ -84,8 +84,14 @@ const SetupWizard = () => {
       setDeployUrl(result.vercelAppUrl || window.location.origin)
       setStep(STEPS.length - 1)
     } catch (err: any) {
+      const apiError = err.response?.data?.error
+      const isPlatformInvocationError =
+        typeof apiError === 'string' &&
+        (apiError.includes('FUNCTION_INVOCATION') || apiError.includes('server error has occurred'))
       const detail =
-        err.response?.data?.error ||
+        (isPlatformInvocationError
+          ? '초기 설정 API 함수가 정상적으로 기동되지 않았습니다. 일반화 사이트의 4단계를 다시 실행하고, 학교 Vercel 최신 배포가 Ready가 된 뒤 재시도해주세요.'
+          : apiError) ||
         (err.code === 'ECONNABORTED'
           ? '초기 설정 API 응답 시간이 초과됐습니다. 최신 배포가 Ready인지 확인한 뒤 다시 시도해주세요.'
           : err.response?.status

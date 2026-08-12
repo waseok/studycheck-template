@@ -1,13 +1,6 @@
-import serverless from 'serverless-http'
 import { createApp } from '../backend/src/app'
 
 const app = createApp()
-const expressHandler = serverless(app, {
-  binary: [
-    'image/*',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  ],
-})
 
 /**
  * Vercel rewrite `/api/(.*) → /api?__path=$1` 때문에 destination URL 이 `/api` 로 바뀌면
@@ -47,10 +40,13 @@ function restoreApiPath(req: any): void {
   req.url = nextQuery ? `${restored}?${nextQuery}` : restored
 }
 
-export default async function handler(req: any, res: any) {
+export default function handler(req: any, res: any) {
   try {
     restoreApiPath(req)
-    return await expressHandler(req, res)
+    // Vercel Node 함수는 IncomingMessage/ServerResponse를 직접 전달합니다.
+    // AWS 이벤트 변환용 serverless-http로 감싸면 요청 스트림 처리가 끝나지 않아
+    // 모든 Express API가 FUNCTION_INVOCATION_TIMEOUT으로 종료될 수 있습니다.
+    return app(req, res)
   } catch (error) {
     console.error('api/index handler error:', error)
     if (!res.headersSent) {
