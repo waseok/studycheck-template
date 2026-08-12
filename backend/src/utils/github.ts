@@ -329,6 +329,8 @@ export async function syncSchoolRuntimeApiToRepo(options: {
   settingsStatusContent?: string
   /** 경량 GET /api/settings/public (없으면 생략) */
   settingsPublicContent?: string
+  /** 경량 POST /api/settings/setup (없으면 생략) */
+  settingsSetupContent?: string
   /** 병렬 install 스크립트 (없으면 생략) */
   installScriptContent?: string
   buildScriptContent?: string
@@ -381,6 +383,13 @@ export async function syncSchoolRuntimeApiToRepo(options: {
       'api/settings/public.ts',
       options.settingsPublicContent,
       'fix: lightweight /api/settings/public without full Express boot'
+    )
+  }
+  if (options.settingsSetupContent) {
+    await syncFile(
+      'api/settings/setup.ts',
+      options.settingsSetupContent,
+      'fix: lightweight /api/settings/setup without full Express boot'
     )
   }
 

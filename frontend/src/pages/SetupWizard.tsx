@@ -84,7 +84,14 @@ const SetupWizard = () => {
       setDeployUrl(result.vercelAppUrl || window.location.origin)
       setStep(STEPS.length - 1)
     } catch (err: any) {
-      setError(err.response?.data?.error || '초기 설정에 실패했습니다.')
+      const detail =
+        err.response?.data?.error ||
+        (err.code === 'ECONNABORTED'
+          ? '초기 설정 API 응답 시간이 초과됐습니다. 최신 배포가 Ready인지 확인한 뒤 다시 시도해주세요.'
+          : err.response?.status
+            ? `초기 설정 API 오류가 발생했습니다. (HTTP ${err.response.status})`
+            : err.message || '초기 설정에 실패했습니다.')
+      setError(detail)
     } finally {
       setLoading(false)
     }

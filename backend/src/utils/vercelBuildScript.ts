@@ -42,9 +42,13 @@ export function readTemplateSettingsPublic(): string {
   return readCwdFile('api', 'settings', 'public.ts')
 }
 
+export function readTemplateSettingsSetup(): string {
+  return readCwdFile('api', 'settings', 'setup.ts')
+}
+
 /**
  * 학교 사이트용 vercel.json
- * - settings/status·public 은 Express 없이 경량 함수
+ * - settings/status·public·setup 은 Express 없이 경량 함수
  * - 그 외 /api/* 는 Express(api/index) + __path
  * - onboarding-router 는 functions 에 넣지 않음 (파일 없으면 unmatched 오류)
  */
@@ -70,6 +74,10 @@ export function readSchoolVercelJson(): string {
           destination: '/api/settings/public',
         },
         {
+          source: '/api/settings/setup',
+          destination: '/api/settings/setup',
+        },
+        {
           source: '/api/(.*)',
           destination: '/api?__path=$1',
         },
@@ -89,6 +97,10 @@ export function readSchoolVercelJson(): string {
         },
         'api/settings/public.ts': {
           maxDuration: 15,
+          includeFiles: prismaIncludes,
+        },
+        'api/settings/setup.ts': {
+          maxDuration: 30,
           includeFiles: prismaIncludes,
         },
       },

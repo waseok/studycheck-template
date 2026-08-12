@@ -25,7 +25,15 @@ import {
   applyVercelEnvAndEnsureDeploy,
   type VercelGitSource,
 } from '../backend/src/utils/vercel'
-import { readTemplateApiIndex, readTemplateVercelBuildScript, readSchoolVercelJson, readTemplateVercelInstallScript, readTemplateSettingsStatus, readTemplateSettingsPublic } from '../backend/src/utils/vercelBuildScript'
+import {
+  readTemplateApiIndex,
+  readTemplateSettingsPublic,
+  readTemplateSettingsSetup,
+  readTemplateSettingsStatus,
+  readTemplateVercelBuildScript,
+  readTemplateVercelInstallScript,
+  readSchoolVercelJson,
+} from '../backend/src/utils/vercelBuildScript'
 import {
   listSupabaseOrganizations,
   listSupabaseProjects,
@@ -87,6 +95,7 @@ async function syncSchoolRepoWithTemplate(
         vercelJsonContent: readSchoolVercelJson(),
         settingsStatusContent: readTemplateSettingsStatus(),
         settingsPublicContent: readTemplateSettingsPublic(),
+        settingsSetupContent: readTemplateSettingsSetup(),
         installScriptContent: readTemplateVercelInstallScript(),
         buildScriptContent: readTemplateVercelBuildScript(),
       })

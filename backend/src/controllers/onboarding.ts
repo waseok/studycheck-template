@@ -32,7 +32,15 @@ import {
   type VercelGitSource,
 } from '../utils/vercel'
 import { ensureDefaultSettings, pushDatabaseSchema, testDatabaseConnection } from '../utils/dbBootstrap'
-import { readTemplateApiIndex, readTemplateVercelBuildScript, readSchoolVercelJson, readTemplateVercelInstallScript, readTemplateSettingsStatus, readTemplateSettingsPublic } from '../utils/vercelBuildScript'
+import {
+  readSchoolVercelJson,
+  readTemplateApiIndex,
+  readTemplateSettingsPublic,
+  readTemplateSettingsSetup,
+  readTemplateSettingsStatus,
+  readTemplateVercelBuildScript,
+  readTemplateVercelInstallScript,
+} from '../utils/vercelBuildScript'
 
 const TEMPLATE_OWNER = 'waseok'
 const TEMPLATE_REPO = 'studycheck-template'
@@ -429,6 +437,7 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
             vercelJsonContent: readSchoolVercelJson(),
             settingsStatusContent: readTemplateSettingsStatus(),
             settingsPublicContent: readTemplateSettingsPublic(),
+            settingsSetupContent: readTemplateSettingsSetup(),
             installScriptContent: readTemplateVercelInstallScript(),
             buildScriptContent: readTemplateVercelBuildScript(),
           })
