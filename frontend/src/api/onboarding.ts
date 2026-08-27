@@ -202,11 +202,30 @@ export async function createSupabaseProjectManaged(
     dbPassword: string
   }
 ) {
-  const response = await apiClient.post<SessionResponse>(
-    '/onboarding/supabase/project',
-    payload,
-    withSessionToken(sessionToken)
-  )
+  const response = await apiClient.post<
+    SessionResponse & {
+      autoConnected?: boolean
+      needsAutoConnect?: boolean
+      hint?: string
+    }
+  >('/onboarding/supabase/project', payload, withSessionToken(sessionToken))
+  return response.data
+}
+
+export async function autoConnectNewSupabaseProject(
+  sessionToken: string,
+  payload: {
+    supabaseToken: string
+    projectRef?: string
+    dbPassword: string
+  }
+) {
+  const response = await apiClient.post<
+    SessionResponse & {
+      autoConnected?: boolean
+      hint?: string
+    }
+  >('/onboarding/supabase/auto-connect', payload, withSessionToken(sessionToken))
   return response.data
 }
 

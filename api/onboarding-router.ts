@@ -38,7 +38,9 @@ import {
   listSupabaseOrganizations,
   listSupabaseProjects,
   createSupabaseProject,
+  connectCreatedSupabaseProject,
   inferSupabaseProjectUrl,
+  resolveNewSupabaseProjectDatabaseUrl,
 } from '../backend/src/utils/supabase'
 import {
   createOnboardingSession,
@@ -603,21 +605,89 @@ async function handleSupabaseProject(req: any, res: any) {
     region,
     dbPassword,
   })
+
+  const projectRef = project.id
+  const projectUrl = inferSupabaseProjectUrl(projectRef)
+  const connectResult = await connectCreatedSupabaseProject({
+    token,
+    projectRef,
+    dbPassword,
+    maxWaitMs: 45_000,
+  })
+
   const updated = updateOnboardingSession(session, {
-    status: 'SUPABASE_CONNECTED',
+    status: connectResult.autoConnected ? 'SUPABASE_CONNECTED' : session.status,
     tokens: { supabaseToken: token },
     supabase: {
       organizationId,
-      projectRef: project.id,
-      projectUrl: inferSupabaseProjectUrl(project.id),
+      projectRef,
+      projectUrl,
       region: project.region,
+      ...(connectResult.autoConnected ? { databaseUrl: connectResult.databaseUrl } : {}),
     },
   })
+
+  if (connectResult.autoConnected) {
+    return json(res, 200, {
+      success: true,
+      session: updated,
+      sessionToken: sealOnboardingSession(updated),
+      autoConnected: true,
+      hint: 'Supabase 프로젝트 생성과 Transaction pooler DB 연결이 완료됐습니다. 이제 4단계로 진행하세요.',
+    })
+  }
+
   return json(res, 200, {
     success: true,
     session: updated,
     sessionToken: sealOnboardingSession(updated),
-    hint: 'Supabase 프로젝트가 생성되었습니다. Connect → Direct → Transaction pooler(6543, 권장) 또는 Session pooler(5432) URI를 다음 단계에 입력해주세요.',
+    autoConnected: false,
+    needsAutoConnect: true,
+    hint: connectResult.hint,
+  })
+}
+
+async function handleSupabaseAutoConnect(req: any, res: any) {
+  if (req.method !== 'POST') return json(res, 405, { error: '허용되지 않은 메서드입니다.' })
+  const session = unsealOnboardingSession(getBearerToken(req))
+  if (!session) return json(res, 401, { error: '온보딩 세션이 없습니다.' })
+
+  const body = await readJsonBody(req)
+  const token = String(body.supabaseToken || session.tokens.supabaseToken || '').trim()
+  const projectRef = String(body.projectRef || session.supabase?.projectRef || '').trim()
+  const dbPassword = String(body.dbPassword || '')
+  if (!token) return json(res, 400, { error: 'Supabase management token이 필요합니다.' })
+  if (!projectRef) {
+    return json(res, 400, { error: '먼저 새 Supabase 프로젝트를 생성해주세요.' })
+  }
+  if (!dbPassword) {
+    return json(res, 400, { error: '프로젝트 생성 시 입력한 DB 비밀번호가 필요합니다.' })
+  }
+
+  const databaseUrl = await resolveNewSupabaseProjectDatabaseUrl({
+    token,
+    projectRef,
+    dbPassword,
+    maxWaitMs: 50_000,
+  })
+
+  const updated = updateOnboardingSession(session, {
+    status: 'SUPABASE_CONNECTED',
+    tokens: { supabaseToken: token },
+    supabase: {
+      ...session.supabase,
+      projectRef,
+      projectUrl: session.supabase?.projectUrl || inferSupabaseProjectUrl(projectRef),
+      databaseUrl,
+    },
+  })
+
+  return json(res, 200, {
+    success: true,
+    session: updated,
+    sessionToken: sealOnboardingSession(updated),
+    autoConnected: true,
+    hint: 'Transaction pooler DB 연결이 완료됐습니다. 이제 4단계로 진행하세요.',
   })
 }
 
@@ -675,7 +745,12 @@ async function handleProvision(req: any, res: any) {
     return json(res, 400, { error: 'Vercel 프로젝트가 연결되지 않았습니다.' })
   }
   if (!session.supabase?.databaseUrl) {
-    return json(res, 400, { error: 'Supabase DATABASE_URL이 연결되지 않았습니다.' })
+    return json(res, 400, {
+      error:
+        session.supabase?.projectRef && !session.supabase?.databaseUrl
+          ? 'Supabase DATABASE_URL이 아직 연결되지 않았습니다. 3단계에서 「DB 자동 연결」을 완료하거나 pooler URI를 직접 입력해주세요.'
+          : 'Supabase DATABASE_URL이 연결되지 않았습니다.',
+    })
   }
 
   const body = await readJsonBody(req)
@@ -807,6 +882,7 @@ export default async function handler(req: any, res: any) {
     if (path === 'vercel/link') return handleVercelLink(req, res)
     if (path === 'supabase/resources') return handleSupabaseResources(req, res)
     if (path === 'supabase/project') return handleSupabaseProject(req, res)
+    if (path === 'supabase/auto-connect') return handleSupabaseAutoConnect(req, res)
     if (path === 'supabase/connect') return handleSupabaseConnect(req, res)
     if (path === 'provision') return handleProvision(req, res)
 

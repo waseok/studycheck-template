@@ -16,11 +16,13 @@ import {
   updateOnboardingSession,
 } from '../utils/onboardingSession'
 import {
+  connectCreatedSupabaseProject,
   createSupabaseProject,
   getSupabaseOAuthConfig,
   inferSupabaseProjectUrl,
   listSupabaseOrganizations,
   listSupabaseProjects,
+  resolveNewSupabaseProjectDatabaseUrl,
 } from '../utils/supabase'
 import {
   applyVercelEnvAndEnsureDeploy,
@@ -294,23 +296,89 @@ export const createSupabaseManagedProject = async (req: Request, res: Response) 
       dbPassword,
     })
 
+    const connectResult = await connectCreatedSupabaseProject({
+      token,
+      projectRef: project.id,
+      dbPassword,
+      maxWaitMs: 45_000,
+    })
+
     const updated = updateOnboardingSession(session, {
-      status: 'SUPABASE_CONNECTED',
+      status: connectResult.autoConnected ? 'SUPABASE_CONNECTED' : session.status,
       tokens: { supabaseToken: token },
       supabase: {
         organizationId: organizationId.trim(),
         projectRef: project.id,
         projectUrl: inferSupabaseProjectUrl(project.id),
         region: project.region,
+        ...(connectResult.autoConnected ? { databaseUrl: connectResult.databaseUrl } : {}),
       },
     })
 
     sendSession(res, updated, {
-      hint: 'Supabase 프로젝트가 생성되었습니다. Connect → Direct → Transaction pooler(6543, 권장) 또는 Session pooler(5432) URI를 다음 단계에 입력해주세요.',
+      autoConnected: connectResult.autoConnected,
+      needsAutoConnect: !connectResult.autoConnected,
+      hint: connectResult.autoConnected
+        ? 'Supabase 프로젝트 생성과 Transaction pooler DB 연결이 완료됐습니다. 이제 4단계로 진행하세요.'
+        : connectResult.hint,
     })
   } catch (error) {
     console.error('Supabase project creation error:', error)
     res.status(500).json({ error: 'Supabase 프로젝트 생성에 실패했습니다.' })
+  }
+}
+
+export const autoConnectSupabaseProject = async (req: Request, res: Response) => {
+  const session = readSession(req)
+  if (!session) {
+    return res.status(401).json({ error: '온보딩 세션이 없습니다.' })
+  }
+
+  const { supabaseToken, projectRef, dbPassword } = req.body as {
+    supabaseToken?: string
+    projectRef?: string
+    dbPassword?: string
+  }
+
+  const token = supabaseToken?.trim() || session.tokens.supabaseToken
+  const ref = projectRef?.trim() || session.supabase?.projectRef
+  if (!token) {
+    return res.status(400).json({ error: 'Supabase management token이 필요합니다.' })
+  }
+  if (!ref) {
+    return res.status(400).json({ error: '먼저 새 Supabase 프로젝트를 생성해주세요.' })
+  }
+  if (!dbPassword) {
+    return res.status(400).json({ error: '프로젝트 생성 시 입력한 DB 비밀번호가 필요합니다.' })
+  }
+
+  try {
+    const databaseUrl = await resolveNewSupabaseProjectDatabaseUrl({
+      token,
+      projectRef: ref,
+      dbPassword,
+      maxWaitMs: 50_000,
+    })
+
+    const updated = updateOnboardingSession(session, {
+      status: 'SUPABASE_CONNECTED',
+      tokens: { supabaseToken: token },
+      supabase: {
+        ...session.supabase,
+        projectRef: ref,
+        projectUrl: session.supabase?.projectUrl || inferSupabaseProjectUrl(ref),
+        databaseUrl,
+      },
+    })
+
+    sendSession(res, updated, {
+      autoConnected: true,
+      hint: 'Transaction pooler DB 연결이 완료됐습니다. 이제 4단계로 진행하세요.',
+    })
+  } catch (error) {
+    console.error('Supabase auto-connect error:', error)
+    const detail = error instanceof Error ? error.message : String(error)
+    res.status(400).json({ error: detail })
   }
 }
 
@@ -364,7 +432,12 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Vercel 프로젝트가 연결되지 않았습니다.' })
   }
   if (!session.supabase?.databaseUrl) {
-    return res.status(400).json({ error: 'Supabase DATABASE_URL이 연결되지 않았습니다.' })
+    return res.status(400).json({
+      error:
+        session.supabase?.projectRef && !session.supabase?.databaseUrl
+          ? 'Supabase DATABASE_URL이 아직 연결되지 않았습니다. 3단계에서 「DB 자동 연결」을 완료하거나 pooler URI를 직접 입력해주세요.'
+          : 'Supabase DATABASE_URL이 연결되지 않았습니다.',
+    })
   }
 
   const { jwtSecret } = req.body as { jwtSecret?: string }

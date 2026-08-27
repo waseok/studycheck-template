@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import {
+  autoConnectSupabaseProject,
   connectExistingSupabase,
   connectGitHubRepo,
   connectVercelProject,
@@ -22,6 +23,7 @@ router.post('/vercel/teams', getVercelTeams)
 router.post('/vercel/project', connectVercelProject)
 router.post('/supabase/resources', getSupabaseResources)
 router.post('/supabase/project', createSupabaseManagedProject)
+router.post('/supabase/auto-connect', autoConnectSupabaseProject)
 router.post('/supabase/connect', connectExistingSupabase)
 router.post('/provision', provisionInfrastructure)
 

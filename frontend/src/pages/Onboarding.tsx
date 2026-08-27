@@ -7,6 +7,7 @@ import {
   connectGitHubRepo,
   connectVercelProject,
   createSupabaseProjectManaged,
+  autoConnectNewSupabaseProject,
   getOnboardingConfig,
   getOnboardingSession,
   getSupabaseResources,
@@ -108,6 +109,7 @@ const Onboarding = () => {
   const [vercelGitPending, setVercelGitPending] = useState<{ installUrl: string } | null>(null)
   const [vercelGitRetrying, setVercelGitRetrying] = useState(false)
   const [setupDiag, setSetupDiag] = useState<{ checking: boolean; items: SetupDiagItem[] } | null>(null)
+  const [supabaseAutoConnecting, setSupabaseAutoConnecting] = useState(false)
   const [deploymentModal, setDeploymentModal] = useState({
     open: false,
     message: '',
@@ -490,6 +492,76 @@ const Onboarding = () => {
     })
   }
 
+  const handleAutoConnectNewSupabase = async (options?: { silent?: boolean }) => {
+    if (!sessionToken && !loadSessionToken()) {
+      setError('온보딩 세션이 없습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.')
+      return false
+    }
+    if (!supabaseForm.dbPassword) {
+      setError('프로젝트 생성 시 입력한 DB 비밀번호가 필요합니다.')
+      return false
+    }
+
+    if (!options?.silent) {
+      setSupabaseAutoConnecting(true)
+      setError('')
+    }
+
+    try {
+      const token = sessionToken || loadSessionToken()!
+      const result = await autoConnectNewSupabaseProject(token, {
+        supabaseToken: supabaseForm.supabaseToken.trim(),
+        projectRef: session?.supabase?.projectRef || supabaseForm.projectRef.trim() || undefined,
+        dbPassword: supabaseForm.dbPassword,
+      })
+      persistSessionToken(result.sessionToken)
+      setSessionToken(result.sessionToken)
+      setSession(result.session)
+      setSupabaseForm((prev) => ({
+        ...prev,
+        projectRef: result.session.supabase?.projectRef || prev.projectRef,
+        projectUrl: result.session.supabase?.projectUrl || prev.projectUrl,
+        databaseUrl: result.session.supabase?.databaseUrl || prev.databaseUrl,
+      }))
+      setHint(result.hint || 'Transaction pooler DB 연결이 완료됐습니다.')
+      return true
+    } catch (err: any) {
+      if (!options?.silent) {
+        setError(
+          toErrorText(
+            err?.response?.data?.error ?? err?.response?.data?.detail ?? err?.message,
+            'DB 자동 연결에 실패했습니다. 1~2분 뒤 다시 시도해주세요.'
+          )
+        )
+      }
+      return false
+    } finally {
+      if (!options?.silent) setSupabaseAutoConnecting(false)
+    }
+  }
+
+  const pollNewSupabaseAutoConnect = async () => {
+    setSupabaseAutoConnecting(true)
+    setError('')
+    setHint('새 Supabase DB pooler가 준비될 때까지 자동으로 연결을 시도합니다. 최대 3분 정도 걸릴 수 있습니다.')
+
+    const deadline = Date.now() + 3 * 60 * 1000
+    while (Date.now() < deadline) {
+      const ok = await handleAutoConnectNewSupabase({ silent: true })
+      if (ok) {
+        setSupabaseAutoConnecting(false)
+        setHint('Supabase DB 자동 연결이 완료됐습니다. 이제 4단계로 진행하세요.')
+        return
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 8_000))
+    }
+
+    setSupabaseAutoConnecting(false)
+    setError(
+      '아직 DB pooler가 준비되지 않았습니다. 1~2분 더 기다린 뒤 「DB 자동 연결」 버튼을 다시 눌러주세요.'
+    )
+  }
+
   const handleCreateSupabaseProject = async () => {
     await withSubmit(async (token) => {
       const result = await createSupabaseProjectManaged(token, {
@@ -502,12 +574,20 @@ const Onboarding = () => {
       persistSessionToken(result.sessionToken)
       setSessionToken(result.sessionToken)
       setSession(result.session)
-      setHint(result.hint || '')
       setSupabaseForm((prev) => ({
         ...prev,
         projectRef: result.session.supabase?.projectRef || '',
         projectUrl: result.session.supabase?.projectUrl || '',
+        databaseUrl: result.session.supabase?.databaseUrl || '',
       }))
+
+      if (result.autoConnected && result.session.supabase?.databaseUrl) {
+        setHint(result.hint || 'Supabase 프로젝트 생성과 DB 연결이 완료됐습니다.')
+        return
+      }
+
+      setHint(result.hint || 'Supabase 프로젝트는 생성됐습니다. DB pooler 준비를 기다리는 중...')
+      void pollNewSupabaseAutoConnect()
     })
   }
 
@@ -1190,9 +1270,29 @@ const Onboarding = () => {
                     className="rounded-lg border-2 border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
-                <button type="button" onClick={handleCreateSupabaseProject} disabled={submitting || !supabaseForm.supabaseToken || !supabaseForm.organizationId} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
+                <button type="button" onClick={handleCreateSupabaseProject} disabled={submitting || supabaseAutoConnecting || !supabaseForm.supabaseToken || !supabaseForm.organizationId} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50">
                   Supabase 프로젝트 생성
                 </button>
+                {(session?.supabase?.projectRef || supabaseForm.projectRef) && !session?.supabase?.databaseUrl && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950 space-y-2">
+                    <p className="font-semibold">프로젝트는 생성됐지만 DB 연결이 아직 필요합니다</p>
+                    <p className="text-xs leading-5">
+                      Supabase pooler가 준비되는 데 1~3분 걸릴 수 있습니다. 아래 「DB 자동 연결」을 누르거나,
+                      자동 시도가 끝날 때까지 기다려주세요. 완료되면 <strong>✓ Supabase 연결 완료</strong>가 표시됩니다.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleAutoConnectNewSupabase()}
+                      disabled={submitting || supabaseAutoConnecting || !supabaseForm.dbPassword}
+                      className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {supabaseAutoConnecting ? 'DB pooler 준비 대기 중...' : 'DB 자동 연결'}
+                    </button>
+                  </div>
+                )}
+                {session?.supabase?.databaseUrl && (
+                  <p className="text-sm text-green-700">✓ Supabase 연결 완료 — 4단계로 진행할 수 있습니다.</p>
+                )}
               </div>
             </details>
           </section>
@@ -1213,9 +1313,14 @@ const Onboarding = () => {
               placeholder="JWT_SECRET"
               className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 font-mono text-sm focus:border-indigo-500 focus:outline-none"
             />
-            <button type="button" onClick={handleProvision} disabled={submitting || !session?.supabase?.databaseUrl || !session?.vercel?.projectId} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-              {deploymentModal.open ? '배포 진행 중... 잠시만 기다려주세요' : 'Vercel 환경변수 주입 + 재배포'}
+            <button type="button" onClick={handleProvision} disabled={submitting || supabaseAutoConnecting || !session?.supabase?.databaseUrl || !session?.vercel?.projectId} className="px-5 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+              {deploymentModal.open ? '배포 진행 중... 잠시만 기다려주세요' : supabaseAutoConnecting ? 'Supabase DB 연결 대기 중...' : 'Vercel 환경변수 주입 + 재배포'}
             </button>
+            {!session?.supabase?.databaseUrl && session?.supabase?.projectRef && (
+              <p className="text-sm text-amber-800">
+                3단계에서 「DB 자동 연결」을 완료한 뒤 4단계를 진행해주세요.
+              </p>
+            )}
             {session?.vercel?.deploymentUrl && (
               <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900 space-y-1">
                 <p className="font-medium">공개 배포 주소 (이 주소로 들어가세요)</p>
