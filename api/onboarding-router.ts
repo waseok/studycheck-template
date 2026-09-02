@@ -23,6 +23,7 @@ import {
   listVercelTeams,
   sanitizeVercelProjectName,
   applyVercelEnvAndEnsureDeploy,
+  resolveVercelProjectProductionUrl,
   type VercelGitSource,
 } from '../backend/src/utils/vercel'
 import {
@@ -388,6 +389,12 @@ async function handleVercelProject(req: any, res: any) {
     projectName,
     repo: repoSlug,
   })
+  const deploymentUrl = await resolveVercelProjectProductionUrl({
+    token,
+    projectId: created.id,
+    projectName: created.name,
+    teamId: body.teamId?.trim() || undefined,
+  })
   const updated = updateOnboardingSession(session, {
     status: 'VERCEL_CONNECTED',
     tokens: { vercelToken: token },
@@ -401,7 +408,7 @@ async function handleVercelProject(req: any, res: any) {
       teamId: body.teamId?.trim() || undefined,
       projectId: created.id,
       projectName: created.name,
-      deploymentUrl: created.deploymentUrl || session.vercel?.deploymentUrl,
+      deploymentUrl,
       gitLinked: created.gitLinked,
     },
   })
@@ -473,7 +480,12 @@ async function handleVercelConnect(req: any, res: any) {
   await disableVercelDeploymentProtection(token, project.id, teamId)
 
   const gitLinked = Boolean(project.link?.type)
-  const deploymentUrl = `https://${project.name}.vercel.app`
+  const deploymentUrl = await resolveVercelProjectProductionUrl({
+    token,
+    projectId: project.id,
+    projectName: project.name,
+    teamId,
+  })
   const updated = updateOnboardingSession(session, {
     status: 'VERCEL_CONNECTED',
     tokens: { vercelToken: token },
@@ -529,6 +541,12 @@ async function handleVercelLink(req: any, res: any) {
     repo: repoSlug,
     teamId,
   })
+  const deploymentUrl = await resolveVercelProjectProductionUrl({
+    token,
+    projectId: linked.id,
+    projectName: linked.name,
+    teamId,
+  }).catch(() => linked.deploymentUrl || session.vercel?.deploymentUrl)
   const updated = updateOnboardingSession(session, {
     status: 'VERCEL_CONNECTED',
     tokens: { vercelToken: token },
@@ -542,7 +560,7 @@ async function handleVercelLink(req: any, res: any) {
       teamId,
       projectId: linked.id,
       projectName: linked.name,
-      deploymentUrl: linked.deploymentUrl || session.vercel?.deploymentUrl,
+      deploymentUrl,
       gitLinked: linked.gitLinked,
     },
   })
@@ -567,12 +585,11 @@ async function handleSupabaseResources(req: any, res: any) {
 
   const body = await readJsonBody(req)
   const token = String(body.supabaseToken || session.tokens.supabaseToken || '').trim()
+  const organizationsOnly = Boolean(body.organizationsOnly)
   if (!token) return json(res, 400, { error: 'Supabase 토큰을 입력해주세요.' })
 
-  const [organizations, projects] = await Promise.all([
-    listSupabaseOrganizations(token),
-    listSupabaseProjects(token),
-  ])
+  const organizations = await listSupabaseOrganizations(token)
+  const projects = organizationsOnly ? [] : await listSupabaseProjects(token)
   const updated = updateOnboardingSession(session, { tokens: { supabaseToken: token } })
   return json(res, 200, {
     success: true,
@@ -842,10 +859,12 @@ async function handleProvision(req: any, res: any) {
     skipExplicitDeploy: gitPushed,
   })
 
-  const deploymentUrl =
-    deployResult.deploymentUrl ||
-    session.vercel.deploymentUrl ||
-    `https://${vercelProjectName}.vercel.app`
+  const deploymentUrl = await resolveVercelProjectProductionUrl({
+    token: session.tokens.vercelToken,
+    projectId: vercelProjectId,
+    projectName: vercelProjectName,
+    teamId: session.vercel.teamId,
+  }).catch(() => deployResult.deploymentUrl || session.vercel.deploymentUrl || `https://${vercelProjectName}.vercel.app`)
 
   const updated = updateOnboardingSession(session, {
     status: 'READY_FOR_SETUP',

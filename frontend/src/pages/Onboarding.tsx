@@ -44,6 +44,15 @@ function toErrorText(value: unknown, fallback: string): string {
   return fallback
 }
 
+/** 학교 사이트 /api/settings/status 전용 응답인지 확인 (다른 Vercel 사이트와 구분) */
+function isStudycheckStatusPayload(value: unknown): value is {
+  hasDatabaseUrl?: boolean
+  dbConnected?: boolean
+  onVercel?: boolean
+} {
+  return typeof value === 'object' && value !== null && 'hasDatabaseUrl' in value
+}
+
 function generateJwtSecret(): string {
   const bytes = new Uint8Array(32)
   crypto.getRandomValues(bytes)
@@ -485,7 +494,9 @@ const Onboarding = () => {
 
   const handleLoadSupabaseResources = async () => {
     await withSubmit(async (token) => {
-      const result = await getSupabaseResources(token, supabaseForm.supabaseToken.trim())
+      const result = await getSupabaseResources(token, supabaseForm.supabaseToken.trim(), {
+        organizationsOnly: true,
+      })
       persistSessionToken(result.sessionToken)
       setSession(result.session)
       setSupabaseOrganizations(result.organizations)
@@ -626,6 +637,7 @@ const Onboarding = () => {
     if (!base) return false
 
     const deadline = Date.now() + 5 * 60 * 1000
+    let wrongSiteDetected = false
     setDeploymentModal((prev) => ({
       ...prev,
       message: '배포 요청이 Vercel에 전달됐습니다. 새 빌드가 시작되기를 기다리고 있습니다.',
@@ -636,7 +648,9 @@ const Onboarding = () => {
     while (Date.now() < deadline) {
       setDeploymentModal((prev) => ({
         ...prev,
-        message: 'Vercel이 새 코드를 빌드하고 학교 사이트를 시작하는 중입니다.',
+        message: wrongSiteDetected
+          ? '배포 주소가 다른 사이트로 연결된 것 같습니다. Vercel 대시보드의 Domains에서 실제 Production URL을 확인해주세요.'
+          : 'Vercel이 새 코드를 빌드하고 학교 사이트를 시작하는 중입니다.',
       }))
 
       try {
@@ -644,18 +658,29 @@ const Onboarding = () => {
           cache: 'no-store',
           signal: AbortSignal.timeout(15_000),
         })
-        if (response.ok) {
+        if (response.status === 404) {
+          wrongSiteDetected = true
+        } else if (response.ok) {
           const status = (await response.json()) as {
             dbConnected?: boolean
             hasDatabaseUrl?: boolean
           }
-          if (status.hasDatabaseUrl && status.dbConnected) return true
+          if (!isStudycheckStatusPayload(status)) {
+            wrongSiteDetected = true
+          } else if (status.hasDatabaseUrl && status.dbConnected) {
+            return true
+          }
         }
       } catch {
         // 배포 중에는 404, 5xx, 네트워크 단절이 정상적으로 잠시 발생할 수 있습니다.
       }
 
       await new Promise((resolve) => window.setTimeout(resolve, 8_000))
+    }
+    if (wrongSiteDetected) {
+      setError(
+        '표시된 배포 URL이 학교 사이트가 아닌 다른 Vercel 프로젝트로 연결된 것 같습니다. Vercel 대시보드 → 해당 프로젝트 → Domains에서 실제 Production 주소를 확인한 뒤 직접 열어보세요.'
+      )
     }
     return false
   }
@@ -738,57 +763,66 @@ const Onboarding = () => {
           reason?: string
           dbError?: string
         }
-        items.push({ label: '학교 API 응답', state: 'ok' })
-
-        if (status.dbConnected) {
-          items.push({ label: '데이터베이스 연결', state: 'ok' })
-          if (status.setupCompleted) {
-            items.push({
-              label: '학교 정보 설정',
-              state: 'warn',
-              detail: '이미 설정이 완료된 사이트입니다. 로그인 화면을 새 탭으로 엽니다.',
-            })
-            window.open(`${base}/login`, '_blank', 'noopener')
-          } else {
-            // DB 상태만 확인하면 setup 함수의 번들 오류를 놓칠 수 있으므로
-            // 실제 setup 함수가 로드되는지 별도의 경량 GET으로 검증합니다.
-            const setupResponse = await fetch(`${base}/api/settings/setup`, {
-              method: 'GET',
-              cache: 'no-store',
-              signal: AbortSignal.timeout(15_000),
-            })
-            const setupProbe = setupResponse.ok
-              ? ((await setupResponse.json()) as { ready?: boolean })
-              : undefined
-
-            if (setupResponse.ok && setupProbe?.ready) {
-              items.push({ label: '초기 설정 API', state: 'ok', detail: '설정 화면을 새 탭으로 엽니다.' })
-              window.open(`${base}/setup`, '_blank', 'noopener')
-            } else {
-              items.push({
-                label: '초기 설정 API',
-                state: 'fail',
-                detail:
-                  `HTTP ${setupResponse.status} — 최신 setup 함수가 아직 배포되지 않았습니다. ` +
-                  '4단계를 다시 실행한 뒤 학교 프로젝트의 최신 배포가 Ready가 되면 재확인해주세요.',
-              })
-            }
-          }
-        } else if (status.hasDatabaseUrl === false || status.reason === 'missing_DATABASE_URL') {
+        if (!isStudycheckStatusPayload(status)) {
           items.push({
-            label: '데이터베이스 연결',
+            label: '학교 API 응답',
             state: 'fail',
             detail:
-              '프로젝트 Settings에는 DATABASE_URL이 있어도, 현재 Production 배포 런타임에는 없습니다. 4단계 「Vercel 환경변수 주입 + 재배포」를 다시 실행해 env가 붙은 배포가 Ready가 될 때까지 기다린 뒤 다시 확인해주세요. (Vercel 대시보드 → Deployments → Redeploy도 동일)',
+              '이 URL은 학교 사이트가 아닌 다른 Vercel 프로젝트로 연결된 것 같습니다. Vercel 대시보드 → Domains에서 실제 Production 주소를 확인해주세요.',
           })
         } else {
-          items.push({
-            label: '데이터베이스 연결',
-            state: 'fail',
-            detail:
-              `DATABASE_URL은 있지만 DB에 연결하지 못했습니다.${status.dbError ? ` (${status.dbError})` : ''} ` +
-              'Supabase Connect → Direct → Transaction pooler(6543, 권장) 또는 Session pooler(5432) URI와 실제 DB 비밀번호를 확인한 뒤 3단계부터 다시 진행해주세요.',
-          })
+          items.push({ label: '학교 API 응답', state: 'ok' })
+
+          if (status.dbConnected) {
+            items.push({ label: '데이터베이스 연결', state: 'ok' })
+            if (status.setupCompleted) {
+              items.push({
+                label: '학교 정보 설정',
+                state: 'warn',
+                detail: '이미 설정이 완료된 사이트입니다. 로그인 화면을 새 탭으로 엽니다.',
+              })
+              window.open(`${base}/login`, '_blank', 'noopener')
+            } else {
+              // DB 상태만 확인하면 setup 함수의 번들 오류를 놓칠 수 있으므로
+              // 실제 setup 함수가 로드되는지 별도의 경량 GET으로 검증합니다.
+              const setupResponse = await fetch(`${base}/api/settings/setup`, {
+                method: 'GET',
+                cache: 'no-store',
+                signal: AbortSignal.timeout(15_000),
+              })
+              const setupProbe = setupResponse.ok
+                ? ((await setupResponse.json()) as { ready?: boolean })
+                : undefined
+
+              if (setupResponse.ok && setupProbe?.ready) {
+                items.push({ label: '초기 설정 API', state: 'ok', detail: '설정 화면을 새 탭으로 엽니다.' })
+                window.open(`${base}/setup`, '_blank', 'noopener')
+              } else {
+                items.push({
+                  label: '초기 설정 API',
+                  state: 'fail',
+                  detail:
+                    `HTTP ${setupResponse.status} — 최신 setup 함수가 아직 배포되지 않았습니다. ` +
+                    '4단계를 다시 실행한 뒤 학교 프로젝트의 최신 배포가 Ready가 되면 재확인해주세요.',
+                })
+              }
+            }
+          } else if (status.hasDatabaseUrl === false || status.reason === 'missing_DATABASE_URL') {
+            items.push({
+              label: '데이터베이스 연결',
+              state: 'fail',
+              detail:
+                '프로젝트 Settings에는 DATABASE_URL이 있어도, 현재 Production 배포 런타임에는 없습니다. 4단계 「Vercel 환경변수 주입 + 재배포」를 다시 실행해 env가 붙은 배포가 Ready가 될 때까지 기다린 뒤 다시 확인해주세요. (Vercel 대시보드 → Deployments → Redeploy도 동일)',
+            })
+          } else {
+            items.push({
+              label: '데이터베이스 연결',
+              state: 'fail',
+              detail:
+                `DATABASE_URL은 있지만 DB에 연결하지 못했습니다.${status.dbError ? ` (${status.dbError})` : ''} ` +
+                'Supabase Connect → Direct → Transaction pooler(6543, 권장) 또는 Session pooler(5432) URI와 실제 DB 비밀번호를 확인한 뒤 3단계부터 다시 진행해주세요.',
+            })
+          }
         }
       }
     } catch {

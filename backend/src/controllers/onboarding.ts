@@ -31,6 +31,7 @@ import {
   getVercelOAuthConfig,
   getVercelUser,
   listVercelTeams,
+  resolveVercelProjectProductionUrl,
   type VercelGitSource,
 } from '../utils/vercel'
 import { ensureDefaultSettings, pushDatabaseSchema, testDatabaseConnection } from '../utils/dbBootstrap'
@@ -242,10 +243,9 @@ export const getSupabaseResources = async (req: Request, res: Response) => {
   }
 
   try {
-    const [organizations, projects] = await Promise.all([
-      listSupabaseOrganizations(token),
-      listSupabaseProjects(token),
-    ])
+    const organizationsOnly = Boolean((req.body as { organizationsOnly?: boolean }).organizationsOnly)
+    const organizations = await listSupabaseOrganizations(token)
+    const projects = organizationsOnly ? [] : await listSupabaseProjects(token)
     const updated = updateOnboardingSession(session, {
       tokens: { supabaseToken: token },
     })
@@ -555,10 +555,17 @@ export const provisionInfrastructure = async (req: Request, res: Response) => {
       skipExplicitDeploy: gitPushed,
     })
 
-    const deploymentUrl =
-      deployResult.deploymentUrl ||
-      session.vercel.deploymentUrl ||
-      `https://${vercelProjectName}.vercel.app`
+    const deploymentUrl = await resolveVercelProjectProductionUrl({
+      token: session.tokens.vercelToken,
+      projectId: vercelProjectId,
+      projectName: vercelProjectName,
+      teamId: vercelTeamId,
+    }).catch(
+      () =>
+        deployResult.deploymentUrl ||
+        session.vercel?.deploymentUrl ||
+        `https://${vercelProjectName}.vercel.app`
+    )
 
     const updated = updateOnboardingSession(session, {
       status: 'READY_FOR_SETUP',

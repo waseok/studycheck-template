@@ -930,9 +930,71 @@ export async function disableVercelDeploymentProtection(
   }
 }
 
-/** 사용자가 바로 열 수 있는 프로덕션 공개 URL */
+/** 사용자가 바로 열 수 있는 프로덕션 공개 URL (추정값) */
 export function getVercelProductionUrl(projectName: string): string {
   return `https://${sanitizeVercelProjectName(projectName)}.vercel.app`
+}
+
+function pickPublicVercelDomain(
+  domains: string[],
+  projectName: string
+): string | undefined {
+  const normalized = sanitizeVercelProjectName(projectName)
+  const preferred = `${normalized}.vercel.app`
+  if (domains.includes(preferred)) return preferred
+
+  const productionLike = domains.find(
+    (domain) => domain.endsWith('.vercel.app') && !domain.includes('-git-')
+  )
+  if (productionLike) return productionLike
+
+  return domains.find((domain) => domain.endsWith('.vercel.app'))
+}
+
+/**
+ * Vercel API에서 실제 Production 도메인을 조회합니다.
+ * `프로젝트명.vercel.app` 추측만 쓰면 다른 계정/프로젝트로 연결될 수 있습니다.
+ */
+export async function resolveVercelProjectProductionUrl(options: {
+  token: string
+  projectId: string
+  projectName: string
+  teamId?: string
+}): Promise<string> {
+  const fallback = getVercelProductionUrl(options.projectName)
+
+  try {
+    const res = await vercelFetch(
+      options.token,
+      `/v9/projects/${encodeURIComponent(options.projectId)}`,
+      undefined,
+      options.teamId
+    )
+    if (!res.ok) return fallback
+
+    const project = (await res.json()) as {
+      name?: string
+      alias?: string[]
+      domains?: string[]
+      targets?: { production?: { alias?: string[] } }
+    }
+
+    const domains = [
+      ...(project.domains || []),
+      ...(project.alias || []),
+      ...(project.targets?.production?.alias || []),
+    ]
+      .map((domain) => String(domain).trim())
+      .filter(Boolean)
+
+    const unique = [...new Set(domains)]
+    const picked = pickPublicVercelDomain(unique, project.name || options.projectName)
+    if (picked) return `https://${picked}`
+  } catch (error) {
+    console.warn('resolveVercelProjectProductionUrl fallback:', error)
+  }
+
+  return fallback
 }
 
 /**
@@ -958,7 +1020,12 @@ export async function applyVercelEnvAndEnsureDeploy(options: {
   mode: 'redeploy' | 'first_deploy' | 'git_webhook'
 }> {
   const { token, projectId, projectName, teamId, databaseUrl, jwtSecret } = options
-  const publicUrl = getVercelProductionUrl(projectName)
+  const publicUrl = await resolveVercelProjectProductionUrl({
+    token,
+    projectId,
+    projectName,
+    teamId,
+  })
 
   await ensureVercelProjectBuildSettings(token, projectId, teamId)
   await disableVercelDeploymentProtection(token, projectId, teamId)

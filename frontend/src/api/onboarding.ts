@@ -182,13 +182,21 @@ export async function relinkVercelGit(
   return response.data
 }
 
-export async function getSupabaseResources(sessionToken: string, supabaseToken: string) {
+export async function getSupabaseResources(
+  sessionToken: string,
+  supabaseToken: string,
+  options?: { organizationsOnly?: boolean }
+) {
   const response = await apiClient.post<
     SessionResponse & {
       organizations: Array<{ id: string; name: string }>
       projects: Array<{ id: string; organization_id: string; name: string; region: string; status: string }>
     }
-  >('/onboarding/supabase/resources', { supabaseToken }, withSessionToken(sessionToken))
+  >(
+    '/onboarding/supabase/resources',
+    { supabaseToken, organizationsOnly: options?.organizationsOnly ?? true },
+    { ...withSessionToken(sessionToken), timeout: 120_000 }
+  )
   return response.data
 }
 
@@ -208,7 +216,7 @@ export async function createSupabaseProjectManaged(
       needsAutoConnect?: boolean
       hint?: string
     }
-  >('/onboarding/supabase/project', payload, withSessionToken(sessionToken))
+  >('/onboarding/supabase/project', payload, { ...withSessionToken(sessionToken), timeout: 120_000 })
   return response.data
 }
 
@@ -225,7 +233,7 @@ export async function autoConnectNewSupabaseProject(
       autoConnected?: boolean
       hint?: string
     }
-  >('/onboarding/supabase/auto-connect', payload, withSessionToken(sessionToken))
+  >('/onboarding/supabase/auto-connect', payload, { ...withSessionToken(sessionToken), timeout: 120_000 })
   return response.data
 }
 
@@ -253,7 +261,7 @@ export async function provisionOnboardingInfrastructure(
   const response = await apiClient.post<SessionResponse>(
     '/onboarding/provision',
     payload,
-    withSessionToken(sessionToken)
+    { ...withSessionToken(sessionToken), timeout: 180_000 }
   )
   return response.data
 }
